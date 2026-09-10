@@ -1,6 +1,6 @@
 {
   "_comment": "Brain registry (D15 / BRAINS.md). Metadata only - connection VALUES live in .env.local under the env names below (names-only iron rule). schemaVersionCurrent tracks brains/schema/; consumers refuse a brain whose schemaVersion differs from what the code expects. The VERSIONS.md cut procedure flips the live row's generation at cutover.",
-  "schemaVersionCurrent": 3,
+  "schemaVersionCurrent": 6,
   "brains": [
     {
       "name": "live",
@@ -9,7 +9,7 @@
       "connEnv": "SUPABASE_DB_URL",
       "restUrlEnv": "SUPABASE_URL",
       "restKeyEnv": "SUPABASE_SERVICE_KEY",
-      "schemaVersion": 3,
+      "schemaVersion": 6,
       "soulRef": "main",
       "generation": 0,
       "created": "2026-07-08",

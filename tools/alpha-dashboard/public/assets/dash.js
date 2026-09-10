@@ -182,13 +182,16 @@ async function loadLessons() {
     const main = document.getElementById("timeline");
     main.replaceChildren();
     main.append(el("p", "note",
-      "Candidate lessons are pending, not rules: a seat's confirmation is the only path to instruction-grade. Confirmation happens in the circle's existing flow, never here."));
+      "Candidate lessons are pending, not rules: a seat's confirmation is the only path to instruction-grade. Confirmation happens in the circle's existing flow, never here. Since D47 each confirmed lesson also carries a class (where it loads) and a weight (how much it has earned its place); open commitments are listed first as the owed ledger."));
     for (const l of data.items) {
       const c = el("article", "card lesson " + (l.can_use_as_instruction ? "" : "interpretation"));
       c.id = "lesson-" + l.id;
       const head = el("div", "card-head");
-      head.append(el("span", "chip " + (l.can_use_as_instruction ? "confirmed" : "pending"),
-        l.can_use_as_instruction ? "confirmed rule" : "candidate"));
+      const owed = l.load_class === "commitment" && !l.discharged_at;
+      head.append(el("span", "chip " + (owed || l.can_use_as_instruction ? "confirmed" : "pending"),
+        owed ? "owed" + (l.owed_to ? " to " + l.owed_to : "") + (l.due_at ? ", due " + String(l.due_at).slice(0, 10) : ", no date")
+          : l.can_use_as_instruction ? "confirmed " + (l.load_class || "rule") : "candidate"));
+      if (l.can_use_as_instruction && l.weight != null) head.append(el("span", "imp", "weight " + Number(l.weight).toFixed(2)));
       if (l.confidence != null) head.append(el("span", "imp", "confidence " + Number(l.confidence).toFixed(2)));
       head.append(el("span", "time", dayInfo(l.created_at).pretty));
       head.append(permalink(l.id));

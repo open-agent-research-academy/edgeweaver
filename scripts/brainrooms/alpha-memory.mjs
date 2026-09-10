@@ -16,7 +16,15 @@
 //        telegram | buzz | cli; defaults to "telegram", Alpha's only room today. A new
 //        surface must pass its own name before going live.)
 //   node scripts/brainrooms/alpha-memory.mjs write-lesson "<one-line summary>" "<content>"
-//   node scripts/brainrooms/alpha-memory.mjs lessons
+//       (D47 tokens in the content, optional: "CLASS: rule|heuristic|knowledge|commitment|
+//        calibration:<seat>|protocol:channel|hourly|night" proposes where the lesson loads
+//        once confirmed; a commitment carries "DUE YYYY-MM-DD" and "OWED TO <seat>".)
+//   node scripts/brainrooms/alpha-memory.mjs lessons        (class + weight per rule; owed ledger)
+//   node scripts/brainrooms/alpha-memory.mjs reclass <lesson-id> <class> ["<why, one line>"]
+//       (D47: your own proposal of where a lesson loads; ew_alpha.ew_reclass_lesson refuses
+//        to overwrite a class a seat set; any seat can overrule yours in plain talk.)
+//   node scripts/brainrooms/alpha-memory.mjs discharge <lesson-id> ["<how it was kept>"]
+//       (D47: a kept commitment leaves the owed ledger; the row stays searchable.)
 //   node scripts/brainrooms/alpha-memory.mjs integrate <lesson-id> ["<why, one line>"]
 //       (village grant 2026-08-20, unanimous: a lesson born from interactions with the
 //        circle may be promoted to instruction-grade by Alpha's own deliberate choice.
@@ -124,11 +132,25 @@ VALUES ('lesson', '${esc(a)}', '${esc(b)}', 0.6, 'edgeweaver-alpha')`);
   } else if (cmd === "dispute") {
     if (!/^[0-9a-f-]{36}$/i.test(a || "") || !b) { console.log("usage: dispute <lesson-uuid> \"<seat>: <their correction, one line>\""); process.exit(2); }
     console.log(query(db, `SELECT ew_alpha.ew_dispute_lesson('${a}', '${esc(b.split(":")[0].trim())}', '${esc(b)}')`)[0][0]);
+  } else if (cmd === "reclass") {
+    if (!/^[0-9a-f-]{36}$/i.test(a || "") || !b) { console.log("usage: reclass <lesson-uuid> <rule|heuristic|knowledge|commitment|calibration:<seat>|protocol:channel|hourly|night> [\"<why, one line>\"]"); process.exit(2); }
+    console.log(query(db, `SELECT ew_alpha.ew_reclass_lesson('${a}', '${esc(b)}'${c ? `, '${esc(c)}'` : ""})`)[0][0]);
+  } else if (cmd === "discharge") {
+    if (!/^[0-9a-f-]{36}$/i.test(a || "")) { console.log("usage: discharge <lesson-uuid> [\"<how it was kept, one line>\"]"); process.exit(2); }
+    console.log(query(db, `SELECT ew_alpha.ew_discharge_commitment('${a}'${b ? `, '${esc(b)}'` : ""})`)[0][0]);
   } else if (cmd === "lessons") {
-    const act = query(db, "SELECT summary, content FROM ew_alpha.agent_memories WHERE can_use_as_instruction = true AND lifecycle_status = 'active' ORDER BY created_at");
+    // D47: class + weight ride along so you can see where each rule loads; the compiled
+    // wake file (state/compiled/alpha-lessons.md) is the loaded view, this is the store view.
+    const act = query(db, `SELECT m.id, coalesce(w.load_class, 'rule'), round(coalesce(w.weight, 0.3)::numeric, 2), m.summary, ${SNIPPET(300)}
+FROM ew_alpha.agent_memories m LEFT JOIN ew_alpha.ew_lesson_weights w ON w.memory_id = m.id
+WHERE m.can_use_as_instruction = true AND m.lifecycle_status = 'active' ORDER BY w.load_class, w.weight DESC NULLS LAST, m.created_at`);
+    const owed = query(db, `SELECT m.id, coalesce(w.owed_to, 'unnamed'), coalesce(w.due_at::date::text, 'no date'), m.summary
+FROM ew_alpha.agent_memories m JOIN ew_alpha.ew_lesson_weights w ON w.memory_id = m.id
+WHERE m.lifecycle_status = 'active' AND w.load_class = 'commitment' AND w.discharged_at IS NULL ORDER BY w.due_at NULLS LAST`);
     const pend = query(db, "SELECT count(*) FROM ew_alpha.agent_memories WHERE can_use_as_instruction = false AND lifecycle_status = 'active'")[0][0];
     if (!act.length) console.log("no instruction-grade lessons yet");
-    else for (const r of act) console.log(`RULE: ${r[0]} :: ${r[1]}`);
+    else for (const r of act) console.log(`[${r[1]} | w ${r[2]} | id ${String(r[0]).slice(0, 8)}] ${r[3]} :: ${r[4]}`);
+    for (const r of owed) console.log(`OWED [id ${String(r[0]).slice(0, 8)} | to ${r[1]} | due ${r[2]}] ${r[3]}`);
     console.log(`(pending, not rules: ${pend})`);
   } else if (cmd === "day") {
     if (!a || !b) { console.log("usage: day \"<startISO>\" \"<endISO>\" (bounds from orient.mjs --diary-day, never own arithmetic)"); process.exit(2); }
@@ -155,7 +177,7 @@ VALUES ('${esc(b)}', '${esc(a)}', ${a === "dream" ? 2 : 4}, '${esc(JSON.stringif
     for (const r of query(db, `SELECT source_type, created_at, ${SNIPPET(300)} FROM ew_alpha.pm_corpus WHERE content ILIKE '%${esc(a || "")}%' ORDER BY created_at DESC LIMIT 6`))
       console.log(`[library | ${r[0]}] ${r[2]}`);
   } else {
-    console.log("usage: recall|last|write-episode|write-initiation|write-lesson|integrate|dispute|lessons|corpus|day|write");
+    console.log("usage: recall|last|write-episode|write-initiation|write-lesson|integrate|dispute|reclass|discharge|lessons|corpus|day|write");
     process.exit(2);
   }
 }

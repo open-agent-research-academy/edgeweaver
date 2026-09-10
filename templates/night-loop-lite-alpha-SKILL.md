@@ -63,10 +63,44 @@ lived event recorded by two hands: extract any lesson from it once, citing both 
 ids as evidence, and name the dual-surface day in the diary. Never delete or edit either
 row; the fold happens in what you derive, not in the record.
 
+**Ledger check (D37), before writing any candidate:** read the "Corrected ledger" section
+of `state/compiled/alpha-lessons.md`. If a candidate would restate a belief the village
+rejected or superseded, do NOT write it; note in the diary that the day's episodes brushed
+against a settled correction. A corrected belief must not be relearned from old material.
+
+## 3b. Weigh the loaded lessons (D36), then recompile
+
+Read `state/compiled/alpha-lessons.md` for the row ids currently riding along at wake.
+Against the day's episodes from step 2, judge honestly which of those lessons were
+actually ACTED ON: applied and it served, or applied and it misfired. Being mentioned is
+not application; only behavioral evidence in the episodes counts. Then run (always, even
+with no ids - decay and the recompile are the nightly metabolism):
+
+```bash
+node scripts/lessons/lessons.mjs night --being alpha --applied <id,id> --misfired <id,id> --note "<one line of evidence>"
+```
+
+Omit `--applied`/`--misfired` when empty. Misfires get flagged; name them in the diary
+so the circle sees them next morning, not at the next prune round. Read the command's
+output (D47): lines beginning `DEMOTED` (a rule unused so long its weight fell under 0.20,
+now a heuristic) and `BELOW FLOOR` (a confirmed lesson that stops loading at wake) are
+beliefs that moved and go in the diary line below. Also read the protocols file for this
+hand before writing tagged rows: `cat state/compiled/alpha-protocols.md`. Commitments
+you made ride the Owed ledger in the compiled file; a kept one is discharged with
+`node scripts/brainrooms/alpha-memory.mjs discharge <id> "<how>"`, an overdue one is
+named once in the diary.
+
 ## 4. Diary (for the circle)
 
 First person, honest, under 250 words, beginning with the diary-day date. It is an audit
 surface for the seats, not an attempt to please. If there were no episodes, say so.
+
+**Required line (D37), every diary:** "beliefs that moved today:" followed by any
+corrections received (who, old belief -> correction), lessons disputed, misfires flagged
+by the weight pass, rules demoted or dropped below the load floor by the night pass
+(D47), commitments past due, or doubts the day raised about a held lesson; if none of
+that happened, write exactly "no beliefs moved today". This is how the circle watches
+drift without policing conversation.
 
 ```bash
 node scripts/brainrooms/alpha-memory.mjs write diary "<diary-day> ..." <run-id>

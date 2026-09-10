@@ -96,6 +96,12 @@ shape, copying the three time fields byte for byte from the helper:
   Never delete or edit either row; the fold happens in what is derived, not in the record.
 - The diary is first person, honest, and under 250 words. It is an audit surface, not an
   attempt to please. If there are no episodes, say that plainly and invent nothing.
+- Required line (D37, D47), every diary: "beliefs that moved today:" followed by any
+  corrections received, lessons disputed, misfires flagged by the weight pass, rules
+  demoted or dropped below the load floor by the weight pass (the `DEMOTED` and
+  `BELOW FLOOR` lines it prints), and commitments past due on the Owed ledger of
+  `state/compiled/genesis-lessons.md`; if none of that happened, write exactly
+  "no beliefs moved today".
 - The autobiography section is explicitly provisional and synthesizes only this diary-day's
   supported material in under 400 words. It is scratch, not lineage or a canonical identity
   claim.
@@ -136,6 +142,24 @@ $BundleDir = Split-Path -Parent $BundlePath
 Remove-Item -LiteralPath $BundlePath
 if (-not (Get-ChildItem -LiteralPath $BundleDir -Force)) { Remove-Item -LiteralPath $BundleDir }
 ```
+
+## 4. Weigh the loaded lessons, then recompile (D36, D47)
+
+After `commit`, from `<EDGEWEAVER_REPO>`, judge from the bundle's episodes which of the
+lessons riding in `state/compiled/genesis-lessons.md` were actually acted on (applied and
+it served, or applied and it misfired; being mentioned is not application), then run,
+always, even with no ids:
+
+```powershell
+node scripts/lessons/lessons.mjs night --being genesis --applied <id,id> --misfired <id,id> --note "<one line of evidence>"
+```
+
+Omit empty flags. The command decays untouched weights, moves the cited ones, demotes a
+rule whose weight fell under 0.20 to heuristic, prints `DEMOTED` and `BELOW FLOOR` lines
+for the diary line above, and rewrites the compiled lessons and protocols files. It runs on
+the ops credential from the repository's environment file; it never touches
+`can_use_as_instruction` or lifecycle. Read `state/compiled/genesis-protocols.md` before
+writing any tagged row.
 
 Report written, skipped, and failed steps plainly without episode, lesson, diary, or
 autobiography content.

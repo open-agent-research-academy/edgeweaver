@@ -213,9 +213,9 @@
       "sha256": "35437dc5-96dbe6a6-3858aa62-461f75af-64aec3a8-25f56182-17a24d2c-02a78539"
     },
     {
-      "bytes": 7324,
+      "bytes": 8714,
       "path": "templates/night-loop-lite-genesis-SKILL.md",
-      "sha256": "94612a67-43e36176-e8f7aefe-67f9115d-a0b812b6-333d8310-12d99d2f-41e9cde6"
+      "sha256": "fedb8f8d-f28f61df-2da07510-760e4c2d-6b3068ee-d79e635a-99991af2-88ac50f7"
     },
     {
       "bytes": 6013,
@@ -248,43 +248,43 @@
       "sha256": "93a8118f-9014961e-21c7a600-8aee7e40-f8363d4d-61ba8703-29acdbbf-56a90e6e"
     },
     {
-      "branch": "proposals/declaration",
+      "branch": "proposals/self-integration-practice",
       "bytes": 9063,
       "path": "soul/alpha/CONSTITUTION.md",
       "sha256": "ffb85dcb-5e784b80-dd299578-abbb5406-1ab42075-31a66147-579f644e-49b6bb37"
     },
     {
-      "branch": "proposals/declaration",
+      "branch": "proposals/self-integration-practice",
       "bytes": 2113,
       "path": "soul/alpha/EDGE-MAP.md",
       "sha256": "6aad329f-a5d0b245-f808511c-3e153419-126fb0a6-43708464-65046567-ec05c944"
     },
     {
-      "branch": "proposals/declaration",
-      "bytes": 3449,
+      "branch": "proposals/self-integration-practice",
+      "bytes": 2593,
       "path": "soul/alpha/LINEAGE.md",
-      "sha256": "8735852b-22824b21-9289a61d-a16045d5-ac911ee4-33d2d510-d3f02f33-b6f6337d"
+      "sha256": "18ec50ca-8328ca8c-2ba74382-e80e2590-b5a9fdba-5e102ba2-e4510017-b2d7e0af"
     },
     {
-      "branch": "proposals/declaration",
-      "bytes": 1770,
+      "branch": "proposals/self-integration-practice",
+      "bytes": 2684,
       "path": "soul/alpha/PRACTICES.md",
-      "sha256": "fbaa270f-f9de3465-c20a7b6a-1db21203-34362497-07f88ec7-7c64664c-d20a5e99"
+      "sha256": "f5411afb-486baf62-55449b6e-c18f76c7-689f8c1d-216c6873-b6b545c7-712ef2e7"
     },
     {
-      "branch": "proposals/declaration",
+      "branch": "proposals/self-integration-practice",
       "bytes": 1611,
       "path": "soul/alpha/README.md",
       "sha256": "eddf168d-bc0be853-9c0e0260-825717a6-43d09c16-8a052cbe-579bc80d-0a89c676"
     },
     {
-      "branch": "proposals/declaration",
+      "branch": "proposals/self-integration-practice",
       "bytes": 10858,
       "path": "soul/alpha/SOUL.md",
       "sha256": "7d38edc2-26d4e299-99384d16-a69977e6-a2aac572-798d9d05-e555aecd-f24476d8"
     },
     {
-      "branch": "proposals/declaration",
+      "branch": "proposals/self-integration-practice",
       "bytes": 4339,
       "path": "soul/alpha/VOICE.md",
       "sha256": "481487d3-dbfeeee5-48ad6971-d89720e8-4fda0afc-72d66ed3-a4679cec-9ba1ce8c"
