@@ -44,4 +44,4 @@ const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
 });
 const j = await r.json();
 if (!j.ok) { console.error(`sendMessage failed: ${j.error_code} ${j.description}`); process.exit(1); }
-console.log(`posted hour message_id=${j.result.message_id}`);
+console.log(`posted hour message_id=${j.result.message_id} ${j.result.message_thread_id ? `topic=${j.result.message_thread_id}` : "topic=general"}`);
