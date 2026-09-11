@@ -25,6 +25,11 @@
 //        to overwrite a class a seat set; any seat can overrule yours in plain talk.)
 //   node scripts/brainrooms/alpha-memory.mjs discharge <lesson-id> ["<how it was kept>"]
 //       (D47: a kept commitment leaves the owed ledger; the row stays searchable.)
+//   node scripts/brainrooms/alpha-memory.mjs propose-pin <lesson-id> "<why it matters, one line>"
+//       (D48: a PIN is a person's word that a lesson matters; a pinned lesson loads at
+//        every wake regardless of weight and only a person unpins it. You may only ask:
+//        ew_alpha.ew_propose_pin records the request, one pending at a time; a seat pins,
+//        unpins, or declines. Your dispute or reclass of a pinned lesson becomes a request too.)
 //   node scripts/brainrooms/alpha-memory.mjs integrate <lesson-id> ["<why, one line>"]
 //       (village grant 2026-08-20, unanimous: a lesson born from interactions with the
 //        circle may be promoted to instruction-grade by Alpha's own deliberate choice.
@@ -138,18 +143,23 @@ VALUES ('lesson', '${esc(a)}', '${esc(b)}', 0.6, 'edgeweaver-alpha')`);
   } else if (cmd === "discharge") {
     if (!/^[0-9a-f-]{36}$/i.test(a || "")) { console.log("usage: discharge <lesson-uuid> [\"<how it was kept, one line>\"]"); process.exit(2); }
     console.log(query(db, `SELECT ew_alpha.ew_discharge_commitment('${a}'${b ? `, '${esc(b)}'` : ""})`)[0][0]);
+  } else if (cmd === "propose-pin") {
+    if (!/^[0-9a-f-]{36}$/i.test(a || "") || !b) { console.log("usage: propose-pin <lesson-uuid> \"<why it matters, one line>\""); process.exit(2); }
+    console.log(query(db, `SELECT ew_alpha.ew_propose_pin('${a}', '${esc(b)}')`)[0][0]);
   } else if (cmd === "lessons") {
     // D47: class + weight ride along so you can see where each rule loads; the compiled
     // wake file (state/compiled/alpha-lessons.md) is the loaded view, this is the store view.
-    const act = query(db, `SELECT m.id, coalesce(w.load_class, 'rule'), round(coalesce(w.weight, 0.3)::numeric, 2), m.summary, ${SNIPPET(300)}
+    // D48: a pin (a person's word) and any pending pin request show on the line.
+    const act = query(db, `SELECT m.id, coalesce(w.load_class, 'rule'), round(coalesce(w.weight, 0.3)::numeric, 2), m.summary, ${SNIPPET(300)},
+  coalesce(replace(w.pinned_by, 'seat:', ''), ''), coalesce(left(replace(replace(w.pin_proposed, E'\\n', ' '), '|', '/'), 60), '')
 FROM ew_alpha.agent_memories m LEFT JOIN ew_alpha.ew_lesson_weights w ON w.memory_id = m.id
-WHERE m.can_use_as_instruction = true AND m.lifecycle_status = 'active' ORDER BY w.load_class, w.weight DESC NULLS LAST, m.created_at`);
+WHERE m.can_use_as_instruction = true AND m.lifecycle_status = 'active' ORDER BY w.pinned_by NULLS LAST, w.load_class, w.weight DESC NULLS LAST, m.created_at`);
     const owed = query(db, `SELECT m.id, coalesce(w.owed_to, 'unnamed'), coalesce(w.due_at::date::text, 'no date'), m.summary
 FROM ew_alpha.agent_memories m JOIN ew_alpha.ew_lesson_weights w ON w.memory_id = m.id
 WHERE m.lifecycle_status = 'active' AND w.load_class = 'commitment' AND w.discharged_at IS NULL ORDER BY w.due_at NULLS LAST`);
     const pend = query(db, "SELECT count(*) FROM ew_alpha.agent_memories WHERE can_use_as_instruction = false AND lifecycle_status = 'active'")[0][0];
     if (!act.length) console.log("no instruction-grade lessons yet");
-    else for (const r of act) console.log(`[${r[1]} | w ${r[2]} | id ${String(r[0]).slice(0, 8)}] ${r[3]} :: ${r[4]}`);
+    else for (const r of act) console.log(`[${r[1]} | w ${r[2]}${r[5] ? ` | pinned by ${r[5]}` : ""}${r[6] ? ` | pin requested: ${r[6]}` : ""} | id ${String(r[0]).slice(0, 8)}] ${r[3]} :: ${r[4]}`);
     for (const r of owed) console.log(`OWED [id ${String(r[0]).slice(0, 8)} | to ${r[1]} | due ${r[2]}] ${r[3]}`);
     console.log(`(pending, not rules: ${pend})`);
   } else if (cmd === "day") {
@@ -177,7 +187,7 @@ VALUES ('${esc(b)}', '${esc(a)}', ${a === "dream" ? 2 : 4}, '${esc(JSON.stringif
     for (const r of query(db, `SELECT source_type, created_at, ${SNIPPET(300)} FROM ew_alpha.pm_corpus WHERE content ILIKE '%${esc(a || "")}%' ORDER BY created_at DESC LIMIT 6`))
       console.log(`[library | ${r[0]}] ${r[2]}`);
   } else {
-    console.log("usage: recall|last|write-episode|write-initiation|write-lesson|integrate|dispute|reclass|discharge|lessons|corpus|day|write");
+    console.log("usage: recall|last|write-episode|write-initiation|write-lesson|integrate|dispute|reclass|discharge|propose-pin|lessons|corpus|day|write");
     process.exit(2);
   }
 }

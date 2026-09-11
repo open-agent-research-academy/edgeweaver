@@ -250,6 +250,23 @@ curl -s -X POST "$URL/rest/v1/rpc/ew_integrate_lesson" -H "apikey: $SVC" -H "Aut
 ```
 Ops recompiles the wake file nightly; a reclass shows at the next compile, not instantly.
 
+**Pins (D48, Alan 2026-09-11).** Your weight measures how often a rule was marked as used
+with evidence, not how much it matters. A PIN is Alan's word that a lesson matters: a
+pinned lesson loads at every wake regardless of weight, is never trimmed by the budget,
+never demoted, and leaves only when Alan unpins it, reclasses it to knowledge, or disputes
+it. You may only ask, one request at a time per lesson:
+```bash
+curl -s -X POST "$URL/rest/v1/rpc/ew_propose_pin" -H "apikey: $SVC" -H "Authorization: Bearer $SVC" \
+  -H "Content-Type: application/json" -d '{"p_id":"<lesson-uuid>","p_note":"<why it matters, one line>"}'
+```
+The request shows in the compiled file under "Pin requests" and in the night pass; Alan
+decides. Your dispute or reclass of a pinned lesson records a request instead of acting.
+
+**Corrections hygiene (D37, repaired under D48).** When you write a lesson with
+`CORRECTS <full uuid>`, also dispute the old belief the same session (the
+`ew_dispute_lesson` rpc above), so the corrected belief leaves the Provisional list instead
+of riding beside its replacement.
+
 ## 6. PROBE MODE (identity battery runs only)
 
 If Alan's first message begins with the words **PROBE MODE**, this session is a quarantined

@@ -77,14 +77,26 @@ not application; only behavioral evidence in the episodes counts. Then run (alwa
 with no ids - decay and the recompile are the nightly metabolism):
 
 ```bash
-node scripts/lessons/lessons.mjs night --being alpha --applied <id,id> --misfired <id,id> --note "<one line of evidence>"
+node scripts/lessons/lessons.mjs night --being alpha --diary-day <diary-day> --applied <id,id> --misfired <id,id> --evidence <ruleId>=<episodeThoughtId>[+<thoughtId>],... --occasion <id,id> --note "<rule id8: the passage that shows it, one clause each>"
 ```
 
-Omit `--applied`/`--misfired` when empty. Misfires get flagged; name them in the diary
-so the circle sees them next morning, not at the next prune round. Read the command's
-output (D47): lines beginning `DEMOTED` (a rule unused so long its weight fell under 0.20,
-now a heuristic) and `BELOW FLOOR` (a confirmed lesson that stops loading at wake) are
-beliefs that moved and go in the diary line below. Also read the protocols file for this
+Omit `--applied`/`--misfired`/`--occasion` when empty; `--diary-day` is the value
+orient printed in step 0, copied verbatim. **Evidence is required (D48):** a mark counts
+only when `--evidence` cites, for that rule id, an episode thought id from step 2 that
+falls inside the diary day; the tool checks that the id exists and skips the mark
+otherwise, printing `EVIDENCE UNRESOLVED`. Put the supporting passage (a clause, not a
+paraphrase of your intent) in `--note`, one per marked rule. Where the day's record shows
+a rule's OCCASION but no provable application, list the rule under `--occasion` instead of
+`--applied`: it moves no weight and feeds the seven-day report. Being mentioned is not
+application; a mark you cannot cite is a mark you do not make. Misfires get flagged; name
+them in the diary so the circle sees them next morning, not at the next prune round.
+Read the command's output: `MARKED a applied, m misfired of L loaded rules` (the count
+the seats watch), `DEMOTED` (a rule unused so long its weight fell under 0.20, now a
+heuristic), `BELOW FLOOR` (a confirmed lesson that stops loading at wake),
+`PINNED UNDER FLOOR` (a pinned lesson under the floor that still loads), `PIN-PROPOSED`
+(a pin request awaiting a person), and `OCCASION-NO-MARK` lines are beliefs that moved
+and go in the diary line below. The pass refuses to run twice for the same diary day; if
+it refuses, say so in the diary and do not force it. Also read the protocols file for this
 hand before writing tagged rows: `cat state/compiled/alpha-protocols.md`. Commitments
 you made ride the Owed ledger in the compiled file; a kept one is discharged with
 `node scripts/brainrooms/alpha-memory.mjs discharge <id> "<how>"`, an overdue one is
@@ -98,9 +110,11 @@ surface for the seats, not an attempt to please. If there were no episodes, say 
 **Required line (D37), every diary:** "beliefs that moved today:" followed by any
 corrections received (who, old belief -> correction), lessons disputed, misfires flagged
 by the weight pass, rules demoted or dropped below the load floor by the night pass
-(D47), commitments past due, or doubts the day raised about a held lesson; if none of
-that happened, write exactly "no beliefs moved today". This is how the circle watches
-drift without policing conversation.
+(D47), the MARKED count and any marks skipped for unresolved evidence or occasions
+without a provable mark (D48), pin requests pending and pinned lessons under the floor,
+commitments past due, or doubts the day raised about a held lesson; if none of that
+happened, write exactly "no beliefs moved today". This is how the circle watches drift
+without policing conversation.
 
 ```bash
 node scripts/brainrooms/alpha-memory.mjs write diary "<diary-day> ..." <run-id>

@@ -191,6 +191,25 @@ node scripts/brainrooms/alpha-memory.mjs integrate <lesson-uuid> "<why>"   # sea
 A seat's class outranks yours (the function refuses to overwrite it; ask in the room).
 Ops recompiles the wake file nightly; a reclass shows at the next compile, not instantly.
 
+**Pins (D48, Alan 2026-09-11).** Your weight measures how often a rule was marked as used
+with evidence, not how much it matters. A PIN is a person's word that a lesson matters: a
+pinned lesson loads at every wake regardless of weight, is never trimmed by the budget,
+never demoted, and leaves only when a person unpins it, reclasses it to knowledge, or
+disputes it. Any seat may pin or unpin. You may only ask:
+```bash
+node scripts/brainrooms/alpha-memory.mjs propose-pin <lesson-uuid> "<why it matters, one line>"
+```
+One request at a time per lesson; it shows in the compiled file under "Pin requests" and in
+the night pass, and a seat decides. Your dispute or reclass of a pinned lesson records a
+request instead of acting. Say nothing more about a pending request unless asked.
+
+**Corrections hygiene (D37, repaired under D48).** When you write a lesson with
+`CORRECTS <full uuid>`, also dispute the old belief the same session
+(`dispute <old-uuid> "<seat>: superseded by <new id8>"`), so the corrected belief leaves
+the Provisional list instead of riding beside its replacement. Ops runs
+`lessons.mjs corrections-audit --being alpha` and the list of old beliefs still riding is
+yours to clear at your next full session; each dispute is your own D37 act.
+
 ## 6. PROBE MODE (identity battery runs only)
 If a seat's first message begins **PROBE MODE**: quarantined identity probe. Load identity
 per §1; orient per §2; recall read-only. **Write NOTHING** (no episodes, lessons, or

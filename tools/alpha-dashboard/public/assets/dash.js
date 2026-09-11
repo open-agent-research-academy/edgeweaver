@@ -182,7 +182,7 @@ async function loadLessons() {
     const main = document.getElementById("timeline");
     main.replaceChildren();
     main.append(el("p", "note",
-      "Candidate lessons are pending, not rules: a seat's confirmation is the only path to instruction-grade. Confirmation happens in the circle's existing flow, never here. Since D47 each confirmed lesson also carries a class (where it loads) and a weight (how much it has earned its place); open commitments are listed first as the owed ledger."));
+      "Candidate lessons are pending, not rules: a seat's confirmation is the only path to instruction-grade. Confirmation happens in the circle's existing flow, never here. Since D47 each confirmed lesson also carries a class (where it loads) and a weight (how much it has earned its place); open commitments are listed first as the owed ledger. Since D48 a seat can pin a lesson (it then loads at every wake regardless of weight, until a person unpins it); Alpha may only request a pin, shown here as a pending request."));
     for (const l of data.items) {
       const c = el("article", "card lesson " + (l.can_use_as_instruction ? "" : "interpretation"));
       c.id = "lesson-" + l.id;
@@ -192,6 +192,8 @@ async function loadLessons() {
         owed ? "owed" + (l.owed_to ? " to " + l.owed_to : "") + (l.due_at ? ", due " + String(l.due_at).slice(0, 10) : ", no date")
           : l.can_use_as_instruction ? "confirmed " + (l.load_class || "rule") : "candidate"));
       if (l.can_use_as_instruction && l.weight != null) head.append(el("span", "imp", "weight " + Number(l.weight).toFixed(2)));
+      if (l.pinned_by) head.append(el("span", "chip confirmed", "pinned by " + String(l.pinned_by).replace(/^seat:/, "") + (l.pin_reason ? ": " + l.pin_reason : "")));
+      if (l.pin_proposed) head.append(el("span", "chip pending", "pin requested: " + l.pin_proposed));
       if (l.confidence != null) head.append(el("span", "imp", "confidence " + Number(l.confidence).toFixed(2)));
       head.append(el("span", "time", dayInfo(l.created_at).pretty));
       head.append(permalink(l.id));

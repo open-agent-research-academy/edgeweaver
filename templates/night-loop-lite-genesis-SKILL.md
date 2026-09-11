@@ -96,12 +96,13 @@ shape, copying the three time fields byte for byte from the helper:
   Never delete or edit either row; the fold happens in what is derived, not in the record.
 - The diary is first person, honest, and under 250 words. It is an audit surface, not an
   attempt to please. If there are no episodes, say that plainly and invent nothing.
-- Required line (D37, D47), every diary: "beliefs that moved today:" followed by any
+- Required line (D37, D47, D48), every diary: "beliefs that moved today:" followed by any
   corrections received, lessons disputed, misfires flagged by the weight pass, rules
   demoted or dropped below the load floor by the weight pass (the `DEMOTED` and
-  `BELOW FLOOR` lines it prints), and commitments past due on the Owed ledger of
-  `state/compiled/genesis-lessons.md`; if none of that happened, write exactly
-  "no beliefs moved today".
+  `BELOW FLOOR` lines it prints), the `MARKED` count with any marks skipped for
+  unresolved evidence or occasions without a provable mark, pin requests pending, and
+  commitments past due on the Owed ledger of `state/compiled/genesis-lessons.md`; if none
+  of that happened, write exactly "no beliefs moved today".
 - The autobiography section is explicitly provisional and synthesizes only this diary-day's
   supported material in under 400 words. It is scratch, not lineage or a canonical identity
   claim.
@@ -151,12 +152,18 @@ it served, or applied and it misfired; being mentioned is not application), then
 always, even with no ids:
 
 ```powershell
-node scripts/lessons/lessons.mjs night --being genesis --applied <id,id> --misfired <id,id> --note "<one line of evidence>"
+node scripts/lessons/lessons.mjs night --being genesis --diary-day <diary_day> --applied <id,id> --misfired <id,id> --evidence <ruleId>=<episodeThoughtId>,... --occasion <id,id> --note "<rule id8: the passage that shows it>"
 ```
 
-Omit empty flags. The command decays untouched weights, moves the cited ones, demotes a
-rule whose weight fell under 0.20 to heuristic, prints `DEMOTED` and `BELOW FLOOR` lines
-for the diary line above, and rewrites the compiled lessons and protocols files. It runs on
+Omit empty flags; `<diary_day>` is the helper's value, copied verbatim. A mark counts only
+with `--evidence` citing an episode thought id from the bundle that falls inside the diary
+day; the command checks the id and skips the mark otherwise (`EVIDENCE UNRESOLVED`).
+Where the bundle shows a rule's occasion but no provable application, list it under
+`--occasion` (no weight effect). The command decays untouched weights, moves the cited
+ones, demotes a rule whose weight fell under 0.20 to heuristic, refuses to run twice for
+one diary day, prints `MARKED a applied, m misfired of L loaded rules`, `DEMOTED`,
+`BELOW FLOOR`, `PINNED UNDER FLOOR`, `PIN-PROPOSED`, and `OCCASION-NO-MARK` lines for
+the diary line above, and rewrites the compiled lessons and protocols files. It runs on
 the ops credential from the repository's environment file; it never touches
 `can_use_as_instruction` or lifecycle. Read `state/compiled/genesis-protocols.md` before
 writing any tagged row.

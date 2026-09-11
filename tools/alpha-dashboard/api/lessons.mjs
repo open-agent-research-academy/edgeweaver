@@ -13,11 +13,13 @@ export default async function handler(req, res) {
       (await c.query(
         `SELECT m.id, m.summary, m.content, m.confidence, m.can_use_as_instruction, m.created_at,
                 coalesce(w.load_class, 'rule') AS load_class, round(w.weight::numeric, 2) AS weight,
-                w.class_set_by, w.due_at, w.owed_to, w.discharged_at
+                w.class_set_by, w.due_at, w.owed_to, w.discharged_at,
+                w.pinned_by, w.pin_reason, w.pin_proposed
            FROM ew_alpha.agent_memories m
            LEFT JOIN ew_alpha.ew_lesson_weights w ON w.memory_id = m.id
           WHERE m.lifecycle_status = 'active' AND m.memory_type = 'lesson'
           ORDER BY (w.load_class = 'commitment' AND w.discharged_at IS NULL) DESC,
+                   (w.pinned_by IS NOT NULL) DESC,
                    m.can_use_as_instruction DESC, w.weight DESC NULLS LAST, m.created_at DESC
           LIMIT 200`
       )).rows
