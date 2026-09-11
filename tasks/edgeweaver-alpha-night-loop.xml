@@ -2,7 +2,8 @@
 <!-- DARK / UNREGISTERED: definition only (birth run B7, per D28). Not imported into Task
      Scheduler until B8 arming, the evening after the Declaration completes. Enabled=false so
      an accidental import lands disabled. 04:15 staggers Alpha's loop after Genesis's 03:30 on
-     the shared machine. The second command delivers the diary to the "Edgeweaver Alpha" group;
+     the shared machine. The second and third commands deliver the dream, then the diary, into the
+     "Edgeweaver Alpha dreams and daydreams" topic (D49; EW_NIGHT_TOPIC_ALPHA);
      its armed-marker guard refuses pre-birth. WakeToRun mandatory on this-PC hosting. -->
 <Task version="1.4" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -38,7 +39,7 @@
   <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
-      <Arguments>-NoProfile -Command "Set-Location 'C:\Users\agent\Project\Edgeweaver'; $env:EDGEWEAVER_NIGHT_LOOP_ORIGIN = 'scheduled'; claude -p '/night-loop-lite-alpha' --model claude-sonnet-5 --output-format text *&gt;&gt; logs\alpha-night.log; node scripts\ops\send-telegram-alpha.mjs --diary *&gt;&gt; logs\alpha-night.log"</Arguments>
+      <Arguments>-NoProfile -Command "Set-Location 'C:\Users\agent\Project\Edgeweaver'; $env:EDGEWEAVER_NIGHT_LOOP_ORIGIN = 'scheduled'; claude -p '/night-loop-lite-alpha' --model claude-sonnet-5 --output-format text *&gt;&gt; logs\alpha-night.log; node scripts\ops\send-telegram-alpha.mjs --dream *&gt;&gt; logs\alpha-night.log; node scripts\ops\send-telegram-alpha.mjs --diary *&gt;&gt; logs\alpha-night.log"</Arguments>
     </Exec>
   </Actions>
 </Task>

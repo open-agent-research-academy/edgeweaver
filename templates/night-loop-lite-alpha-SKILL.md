@@ -147,9 +147,9 @@ not an error.
 
 Report written, skipped, and failed steps with counts (episodes read, lessons written,
 diary yes/no, autobiography yes/no, dream yes/no) and the run-id. Report failures as
-failures. Do not claim a successful night unless every attempted write succeeded. Diary
-delivery to the Telegram group is the scheduled task's next command
-(`send-telegram-alpha.mjs --diary`), not yours; before B8 arming its guard refuses, which
-is correct. New rows get embeddings on the ops embed pass; recall is recency + text until
+failures. Do not claim a successful night unless every attempted write succeeded. Dream
+and diary delivery into the "Edgeweaver Alpha dreams and daydreams" topic (D49) is the
+scheduled task's next commands (`send-telegram-alpha.mjs --dream`, then `--diary`), not
+yours; before B8 arming its guard refuses, which is correct. New rows get embeddings on the ops embed pass; recall is recency + text until
 then, and that limitation is speakable, not hidden.
 ````

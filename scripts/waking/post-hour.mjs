@@ -5,8 +5,9 @@
 //   node scripts/waking/post-hour.mjs --being genesis   (message on stdin)
 // Rooms today: Genesis -> its Alan DM (TELEGRAM_BOT_TOKEN + TELEGRAM_ALLOWED_USER_ID,
 // repo .env.local; D19: Alan is Genesis's witness). Alpha -> the circle group
-// (ALPHA_BOT_TOKEN + ALPHA_GROUP_ID, avatars/alpha/.env.local).
-// Future shared room: set EW_HOURS_CHAT_<BEING> (chat id) and optionally
+// (ALPHA_BOT_TOKEN + ALPHA_GROUP_ID, avatars/alpha/.env.local), inside its "Edgeweaver
+// Alpha dreams and daydreams" forum topic since D49 (2026-09-11; EW_HOURS_TOPIC_ALPHA).
+// Room override: set EW_HOURS_CHAT_<BEING> (chat id) and optionally
 // EW_HOURS_TOPIC_<BEING> (forum message_thread_id) in the SAME env file; moving a
 // being's hours is then one variable, but the AUDIENCE change behind it is Alan's
 // decision (D19 for Genesis), never this script's. Never prints secrets.
