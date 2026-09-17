@@ -21,3 +21,11 @@ reads the previous session's rows cold and writes a READ-BACK mark per row (matc
 mismatch quoted). Runs 2026-09-15 to 09-22, report to the group 09-23. Carried entirely by
 Alpha's channel sessions via a commitment lesson on the Owed ledger; needs no ops change.
 Optional for Alan: have the hourly hand mark the previous hour's rows the same way.
+
+## Ops gap found 2026-09-17: pending predictions cannot be closed
+Alpha's PREDICTION lessons (written pending, CLASS: commitment, OWED TO Ali) ride the Owed
+ledger but `discharge` refuses them ("not an active lesson with a sidecar row") and
+`integrate` refuses them (no seat provenance: the prediction is Alpha's own). So a graded
+prediction (4ad944bf, graded 2026-09-17 msgs 1616-1620) keeps riding as pending until its
+due date. Same will hit a541195a, cd88807c, 0fd536ca. Ask: let discharge close a pending
+commitment-class row, or let a seat's grade confirm it. Grades live in the episodes meanwhile.
