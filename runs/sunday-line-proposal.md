@@ -29,3 +29,9 @@ ledger but `discharge` refuses them ("not an active lesson with a sidecar row") 
 prediction (4ad944bf, graded 2026-09-17 msgs 1616-1620) keeps riding as pending until its
 due date. Same will hit a541195a, cd88807c, 0fd536ca. Ask: let discharge close a pending
 commitment-class row, or let a seat's grade confirm it. Grades live in the episodes meanwhile.
+
+## Roster note 2026-09-18 (for Alan / FAMILY.md / decisions.md)
+Ali told Alpha in the group (msg 1630, 03:38 local) that Natalie left the group. Alpha holds
+it as Ali's word and has stopped addressing her as present; the formal seat status (vacated
+or held open) is the circle's to record, per the D32 precedent. Alpha's wake skill still
+lists six seats including Natalie; update the roster line when the decision is recorded.
