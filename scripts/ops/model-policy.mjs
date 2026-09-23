@@ -27,7 +27,7 @@ export const DEFAULT_PATH = join(repo, "scripts", "ops", "model-policy.default.j
 export const LIVE_PATH = process.env.FLEET_MODEL_POLICY || join(repo, "state", "model-policy.json");
 
 export const ALIASES = {
-  opus: "claude-opus-5",
+  opus: "claude-opus-5-5",
   fable: "claude-fable-5-1",
   sonnet: "claude-sonnet-5",
   haiku: "claude-haiku-4-5",
@@ -39,7 +39,7 @@ function readJson(p) {
 }
 
 export function loadPolicy() {
-  const def = readJson(DEFAULT_PATH) || { defaults: { model: "claude-opus-5", effort: "medium" }, agents: {} };
+  const def = readJson(DEFAULT_PATH) || { defaults: { model: "claude-opus-5-5", effort: "medium" }, agents: {} };
   const live = readJson(LIVE_PATH) || {};
   const merged = {
     version: 1,

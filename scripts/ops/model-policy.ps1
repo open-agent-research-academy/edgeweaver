@@ -8,7 +8,7 @@ function Get-FleetModelArgs {
   param(
     [Parameter(Mandatory = $true)][string]$Agent,
     [string]$Role = 'channel',
-    [string[]]$Fallback = @('--model', 'claude-opus-5', '--effort', 'medium')
+    [string[]]$Fallback = @('--model', 'claude-opus-5-5', '--effort', 'medium')
   )
   $script = 'C:\Users\agent\Project\Edgeweaver\scripts\ops\model-policy.mjs'
   try {
@@ -22,7 +22,7 @@ function Get-FleetModelArgs {
 }
 # Model id only (Buzz harnesses take --model but no --effort; they add [1m] themselves).
 function Get-FleetModel {
-  param([Parameter(Mandatory = $true)][string]$Agent, [string]$Role = 'buzz', [string]$Fallback = 'claude-opus-5')
+  param([Parameter(Mandatory = $true)][string]$Agent, [string]$Role = 'buzz', [string]$Fallback = 'claude-opus-5-5')
   $a = Get-FleetModelArgs -Agent $Agent -Role $Role -Fallback @('--model', $Fallback, '--effort', 'medium')
   return $a[1]
 }

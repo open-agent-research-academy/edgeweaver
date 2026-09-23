@@ -3,9 +3,9 @@
   "note": "Committed defaults. The live, editable copy is state/model-policy.json (gitignored); scripts/ops/model-policy.mjs merges live over default over defaults.model/effort. Buzz launchers append [1m] themselves.",
   "defaults": { "model": "claude-fable-5-1", "effort": "medium" },
   "agents": {
-    "genesis":    { "channel": {}, "hourly": {}, "room": {}, "night": { "model": "claude-sonnet-5" } },
-    "alpha":      { "channel": {}, "hourly": {}, "night": { "model": "claude-sonnet-5" } },
-    "edgeweaver": { "buzz": {} },
+    "genesis":    { "channel": { "model": "claude-opus-5-5" }, "hourly": { "model": "claude-opus-5-5" }, "room": { "model": "claude-opus-5-5" }, "night": { "model": "claude-sonnet-5" } },
+    "alpha":      { "channel": { "model": "claude-opus-5-5" }, "hourly": { "model": "claude-opus-5-5" }, "night": { "model": "claude-sonnet-5" } },
+    "edgeweaver": { "buzz": { "model": "claude-opus-5-5" } },
     "jarvis":     { "channel": {}, "buzz": {} },
     "samantha":   { "channel": {}, "buzz": {} }
   }
