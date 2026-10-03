@@ -57,7 +57,7 @@ import { query, runSqlText } from "../brains/db.mjs";
 const ROOT = join(import.meta.dirname, "..", "..");
 export const BORN = 0.30, BORN_TAUGHT = 0.60, FLOOR = 0.05, CEIL = 0.95, DECAY = 0.995, BOOST = 0.10, BOOST_SELF = 0.05, DROP = 0.15;
 export const LOAD_FLOOR = 0.25, DEMOTE = 0.20;
-export const RULE_BUDGET_BASE = 16000, RULE_BUDGET_PER_MONTH = 2000;
+export const RULE_BUDGET_BASE = 22000, RULE_BUDGET_PER_MONTH = 2000;
 export const CLASS_RE = /^(rule|heuristic|knowledge|commitment|calibration:[a-z]+|protocol:(channel|hourly|night))$/;
 // Rules the night loop applies at its own write-back (the grader is the applier): they
 // boost at BOOST_SELF, decided here, never by the hand. Id prefixes per being.
@@ -184,9 +184,10 @@ WHERE m.id = w.memory_id AND ${B.scope.replace(/workspace_id/g, "m.workspace_id"
 UPDATE ${B.w} w SET due_at = (substring(m.content from 'DUE (\\d{4}-\\d{2}-\\d{2})'))::date
 FROM ${B.mem} m
 WHERE m.id = w.memory_id AND w.due_at IS NULL AND m.content ~ 'DUE \\d{4}-\\d{2}-\\d{2}';
-UPDATE ${B.w} w SET owed_to = initcap(substring(m.content from 'OWED TO ([A-Za-z]+)'))
+UPDATE ${B.w} w SET owed_to = initcap(substring(m.content from '(?i)OWED TO (?:THE )?([A-Za-z]+)'))
 FROM ${B.mem} m
-WHERE m.id = w.memory_id AND w.owed_to IS NULL AND m.content ~ 'OWED TO [A-Za-z]+';`, "lessons-sync");
+WHERE m.id = w.memory_id AND (w.owed_to IS NULL OR w.owed_to = 'The') AND m.content ~ 'OWED TO [A-Za-z]+';`, "lessons-sync");
+// ("OWED TO THE CIRCLE" once parsed as "The"; the OR repairs those rows at the next sync.)
 }
 
 function pinCols(db, B) {

@@ -29,7 +29,7 @@ try {
   check(/export const LOAD_FLOOR = 0\.25, DEMOTE = 0\.20;/.test(src), "LOAD_FLOOR/DEMOTE pin moved");
   check(DECAY === 0.995 && /DECAY = 0\.995/.test(src), "DECAY must be 0.995 (D48 A2)");
   check(BOOST_SELF === 0.05, "BOOST_SELF must be 0.05");
-  check(/RULE_BUDGET_BASE = 16000, RULE_BUDGET_PER_MONTH = 2000/.test(src), "budget constants pin moved");
+  check(/RULE_BUDGET_BASE = 22000, RULE_BUDGET_PER_MONTH = 2000/.test(src), "budget constants pin moved (base 22000 since 2026-10-03, Alan)");
   check(/SUPABASE_DB_URL missing from \.env\.local/.test(src), "ops-credential line missing (weights must move on the ops credential)");
   check(/load_class = 'heuristic', class_set_by = 'night-loop'[\s\S]*?AND load_class = 'rule' AND pinned_by IS NULL;/.test(src), "demote clause must target unpinned rule rows only");
   check(/const sql = `BEGIN;[\s\S]*?INSERT INTO \$\{B\.np\}[\s\S]*?COMMIT;`/.test(src), "night pass must run decay, moves, and the ew_night_pass stamp in one transaction");
@@ -42,7 +42,7 @@ try {
 
   // 2. render over fixtures
   const B = BEINGS.alpha;
-  const now = new Date("2026-09-10T12:00:00Z"); // age 55 days -> budget 16000 + 2000
+  const now = new Date("2026-09-10T12:00:00Z"); // age 55 days -> budget 22000 + 2000
   const mk = (id, load_class, weight, extra = {}) => ({
     id: id.padEnd(36, "0"), summary: `S-${id}`, content: `C-${id} ${"x".repeat(80)}`, confirmed: "2026-09-01",
     lesson_class: "taught", load_class, weight, class_set_by: null, due: null, owed_to: null, discharged: null,
@@ -76,7 +76,7 @@ try {
   check(!rulesSec.includes("id r3") && !rulesSec.includes("id r4"), "below-floor unpinned rules must not load");
   check(/pin requested: please pin/.test(rulesSec), "pin request tag on the line");
   check(out.counts.rules === 4 && out.counts.rulesTotal === 6 && out.counts.pinned === 1, `counts.rules ${out.counts.rules}/${out.counts.rulesTotal} pinned ${out.counts.pinned}`);
-  check(/^Loaded 4 rules and 1 heuristics: 1 pinned by a person .* \(3 below the floor and 0 trimmed by the 18000-char budget/m.test(L), "reasoning line numbers (r3, r4, h2 below the floor)");
+  check(/^Loaded 4 rules and 1 heuristics: 1 pinned by a person .* \(3 below the floor and 0 trimmed by the 24000-char budget/m.test(L), "reasoning line numbers (r3, r4, h2 below the floor)");
   check(/^Last night pass \(diary day 2026-09-10\): MARKED 3 applied, 1 misfired of 36 loaded rules; 1 occasions without a provable mark; 0 marks skipped/m.test(L), "last night pass line from the stamp");
   check(out.loadedIds.includes("rp".padEnd(36, "0")) && !out.loadedIds.includes("r3".padEnd(36, "0")), "loadedIds reflect pins and the floor");
   const heurSec = between("## Heuristics", "## Calibrations");
@@ -115,9 +115,9 @@ try {
   const o3 = render(many, B, { now: new Date("2026-08-17T00:00:00Z") }); // 31 days
   check(o3.counts.budget === RULE_BUDGET_BASE + RULE_BUDGET_PER_MONTH && o3.counts.rules > o2.counts.rules, "budget grows with age and loads more");
   // pins alone over the budget: all pins load, nothing unpinned does, reasoning says so
-  const pinsOnly = { confirmed: Array.from({ length: 30 }, (_, i) => mk(`q${i}`, "rule", 0.5, { content: "z".repeat(700), pinned_by: "seat:ali" })).concat([mk("u1", "rule", 0.9, { content: "z".repeat(100) })]), commitments: [], pending: [], disputed: [], ledger: [] };
+  const pinsOnly = { confirmed: Array.from({ length: 40 }, (_, i) => mk(`q${i}`, "rule", 0.5, { content: "z".repeat(700), pinned_by: "seat:ali" })).concat([mk("u1", "rule", 0.9, { content: "z".repeat(100) })]), commitments: [], pending: [], disputed: [], ledger: [] };
   const o4 = render(pinsOnly, B, { now: new Date("2026-07-18T00:00:00Z") });
-  check(o4.counts.overrun && o4.counts.pinned === 30 && !o4.loadedIds.includes("u1".padEnd(36, "0")) && /pins alone exceed the budget/.test(o4.reasoning), "pins over budget: all pins load, nothing unpinned, reasoning names it");
+  check(o4.counts.overrun && o4.counts.pinned === 40 && !o4.loadedIds.includes("u1".padEnd(36, "0")) && /pins alone exceed the budget/.test(o4.reasoning), "pins over budget: all pins load, nothing unpinned, reasoning names it");
 
   // 3. grant shapes
   const alpha6 = readFileSync(join(ROOT, "brains", "schema", "ew-alpha-0006-lesson-classes.sql"), "utf8");
