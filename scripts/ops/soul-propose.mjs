@@ -28,7 +28,7 @@ const BEINGS = {
     dir: "C:/Users/agent/Project/edgeweaver-alpha-soul",
     env: join(ROOT, "avatars", "alpha", ".env.local"),
     key: "EW_ALPHA_GITHUB_TOKEN",
-    bot: "edgeweaverai-bot",
+    bot: "edgeweaver-alpha",
   },
 };
 

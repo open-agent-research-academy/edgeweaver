@@ -1,4 +1,4 @@
-# set-alpha-github-token.ps1 - store edgeweaverai-bot's token for Alpha's soul proposals
+# set-alpha-github-token.ps1 - store edgeweaver-alpha's token for Alpha's soul proposals
 # (ops; ASCII only). Prompts for the token without echoing it, writes EW_ALPHA_GITHUB_TOKEN
 # into avatars\alpha\.env.local (backup first, other lines untouched, no BOM), then checks
 # the token is the bot's with the right scope (the bot proposes from its own fork, no
@@ -9,7 +9,7 @@ $envFile = Join-Path $root 'avatars\alpha\.env.local'
 $key = 'EW_ALPHA_GITHUB_TOKEN'
 
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Host 'node is not on PATH; nothing written.'; exit 1 }
-$secure = Read-Host -AsSecureString 'Paste the edgeweaverai-bot token (input hidden)'
+$secure = Read-Host -AsSecureString 'Paste the edgeweaver-alpha token (input hidden)'
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 try { $tok = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
 finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
@@ -39,4 +39,4 @@ function Undo-Token {
 try { node $script check alpha; $ok = ($LASTEXITCODE -eq 0) }
 catch { Write-Host "Could not run node: $($_.Exception.Message)"; $ok = $false }
 if (-not $ok) { Write-Host 'Token check failed (see above).'; Undo-Token; exit 1 }
-Write-Host 'Done: Alpha can now propose soul changes as edgeweaverai-bot.'
+Write-Host 'Done: Alpha can now propose soul changes as edgeweaver-alpha.'
