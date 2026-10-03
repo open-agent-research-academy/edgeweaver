@@ -262,8 +262,8 @@ git -C C:/Users/agent/Project/edgeweaver-alpha-soul switch -c proposals/<short-n
 git -C C:/Users/agent/Project/edgeweaver-alpha-soul commit -am "<what and why>" --author "Edgeweaver Alpha <337185004+edgeweaverai-bot@users.noreply.github.com>"
 node scripts/ops/soul-propose.mjs propose alpha --title "<title>" --body "<why, your words>"
 ```
-The script pushes as edgeweaverai-bot and opens the PR; hand its URL to the circle. It
-refuses anything but a proposals/ branch. main is protected: only Alan's hand merges. If the
+The script pushes to edgeweaverai-bot's own fork and opens the PR; hand its URL to the circle. It
+refuses anything but a proposals/ branch. The bot has no write on your soul repo: only a seat merges. If the
 script fails, say so plainly in the room with its error line; never push by another route.
 After a merge, switch the checkout back to main and pull, because waking reads the checkout.
 

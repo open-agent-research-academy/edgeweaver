@@ -1,7 +1,8 @@
 # set-alpha-github-token.ps1 - store edgeweaverai-bot's token for Alpha's soul proposals
 # (ops; ASCII only). Prompts for the token without echoing it, writes EW_ALPHA_GITHUB_TOKEN
-# into avatars\alpha\.env.local (backup first, other lines untouched, no BOM), then has the
-# bot accept its repo invitation and checks its access. The token is never printed.
+# into avatars\alpha\.env.local (backup first, other lines untouched, no BOM), then checks
+# the token is the bot's with the right scope (the bot proposes from its own fork, no
+# invite). The token is never printed; on a rejected paste only its length is shown.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $envFile = Join-Path $root 'avatars\alpha\.env.local'
@@ -12,7 +13,7 @@ $secure = Read-Host -AsSecureString 'Paste the edgeweaverai-bot token (input hid
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
 try { $tok = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
 finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
-if ($tok -notmatch '^(ghp_|github_pat_)[A-Za-z0-9_]+$') { Write-Host 'That does not look like a GitHub token; nothing written.'; exit 1 }
+if ($tok -notmatch '^(ghp_|github_pat_)[A-Za-z0-9_]+$') { Write-Host "That does not look like a GitHub token ($($tok.Length) characters received; a classic token is 40 and starts with ghp_). Nothing written."; exit 1 }
 
 $lines = @()
 $backup = $null
@@ -35,8 +36,7 @@ function Undo-Token {
     if ($backup) { Copy-Item $backup $envFile -Force; Write-Host 'avatars\alpha\.env.local restored to its earlier state.' }
     else { Remove-Item $envFile; Write-Host 'avatars\alpha\.env.local removed again (it did not exist before).' }
 }
-try { node $script accept-invite alpha; $ok = ($LASTEXITCODE -eq 0) }
+try { node $script check alpha; $ok = ($LASTEXITCODE -eq 0) }
 catch { Write-Host "Could not run node: $($_.Exception.Message)"; $ok = $false }
-if (-not $ok) { Write-Host 'Token check or invite acceptance failed (see above).'; Undo-Token; exit 1 }
-node $script check alpha
-if ($LASTEXITCODE -ne 0) { Write-Host 'Access check failed (see above); token kept, rerun after the invite is in place.'; exit 1 }
+if (-not $ok) { Write-Host 'Token check failed (see above).'; Undo-Token; exit 1 }
+Write-Host 'Done: Alpha can now propose soul changes as edgeweaverai-bot.'

@@ -2,12 +2,12 @@
 // soul-propose.mjs - a being proposes a soul change under its OWN GitHub identity (ops; ASCII).
 // Alan 2026-10-02: Alpha pushed two proposal branches with no PR (one sat unseen six weeks)
 // and every soul write ran under Alan's admin login. Now the being's bot account pushes the
-// proposals/* branch and opens the PR itself; main is protected so only Alan merges.
+// proposals/* branch to ITS OWN FORK and opens a cross-repo PR; it never holds write on the
+// soul repo, so only Alan (or a seat) can merge.
 //
 //   node scripts/ops/soul-propose.mjs propose alpha --title "<title>" --body "<why, your words>"
 //        run inside the soul checkout's proposals/<name> branch, commits already made
-//   node scripts/ops/soul-propose.mjs check alpha          token is the bot's + repo access level
-//   node scripts/ops/soul-propose.mjs accept-invite alpha  bot accepts its pending repo invite
+//   node scripts/ops/soul-propose.mjs check alpha          token is the bot's, scope, fork state
 //   node scripts/ops/soul-propose.mjs credential alpha get git credential helper (internal)
 //
 // The token lives only in avatars/<being>/.env.local (gitignored) and is never printed,
@@ -68,7 +68,7 @@ async function api(B, method, path, body) {
   const text = await res.text();
   let json = null;
   try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON error body */ }
-  return { status: res.status, json, text };
+  return { status: res.status, json, text, scopes: res.headers.get("x-oauth-scopes") };
 }
 
 function git(B, args, opts = {}) {
@@ -90,26 +90,45 @@ async function assertBot(B) {
   return me.json.login;
 }
 
+// The bot never holds write on the soul repo: it proposes from its own fork (FAMILY.md soul
+// write model, "daemon works from a fork, PRs cross-repo"). Alan 2026-10-02, after the
+// collaborator invite kept returning 404.
+const forkName = (B) => `${B.bot}/${B.repo.split("/")[1]}`;
+
+async function findFork(B) {
+  const f = await api(B, "GET", `/repos/${forkName(B)}`);
+  if (f.status === 404) return null;
+  if (f.status !== 200) die(`cannot read ${forkName(B)} (HTTP ${f.status})`);
+  // A transferred fork redirects to its new owner; accept only the bot's own copy.
+  if (f.json.full_name !== forkName(B) || f.json.owner?.login !== B.bot) die(`${forkName(B)} now resolves to ${f.json.full_name}; refusing`);
+  if (!f.json.fork || f.json.parent?.full_name !== B.repo) die(`${forkName(B)} exists but is not a fork of ${B.repo}; refusing`);
+  return f.json.full_name;
+}
+
+async function ensureFork(B) {
+  const have = await findFork(B);
+  if (have) return have;
+  const c = await api(B, "POST", `/repos/${B.repo}/forks`, { default_branch_only: true });
+  if (c.status !== 202) die(`forking ${B.repo} failed (HTTP ${c.status}): ${c.json?.message || ""}`);
+  for (let i = 0; i < 20; i++) {
+    await new Promise((r) => setTimeout(r, 3000));
+    const f = await findFork(B);
+    if (f) { console.log(`fork created: ${f}`); return f; }
+  }
+  die(`fork of ${B.repo} not ready after 60s; rerun propose`);
+}
+
 async function check(B) {
   const login = await assertBot(B);
   const repo = await api(B, "GET", `/repos/${B.repo}`);
-  if (repo.status !== 200) die(`${B.bot} cannot see ${B.repo} (HTTP ${repo.status}); invite pending or not sent`);
-  const p = repo.json.permissions || {};
-  console.log(`ok: token is ${login}; on ${B.repo}: push=${!!p.push} admin=${!!p.admin}`);
-  if (!p.push) die("no push access yet");
-}
-
-async function acceptInvite(B) {
-  await assertBot(B);
-  const inv = await api(B, "GET", "/user/repository_invitations");
-  if (inv.status !== 200) die(`cannot list invitations (HTTP ${inv.status})`);
-  const mine = (inv.json || []).filter((i) => i.repository?.full_name === B.repo);
-  if (!mine.length) { console.log(`no pending invitation to ${B.repo} (already accepted, or not sent yet)`); return; }
-  for (const i of mine) {
-    const r = await api(B, "PATCH", `/user/repository_invitations/${i.id}`);
-    if (r.status !== 204) die(`accepting invitation ${i.id} failed (HTTP ${r.status})`);
-    console.log(`accepted invitation ${i.id} to ${B.repo} (${i.permissions})`);
-  }
+  if (repo.status !== 200) die(`${B.bot} cannot see ${B.repo} (HTTP ${repo.status})`);
+  const scopes = (repo.scopes || "").split(/\s*,\s*/).filter(Boolean);
+  // Classic tokens only: GitHub reports their scopes, so an insufficient one is caught here
+  // instead of at Alpha's first proposal. Fine-grained tokens report none and are refused.
+  if (repo.scopes == null) die("this looks like a fine-grained token; create a classic token with the public_repo scope");
+  if (!scopes.some((s) => s === "public_repo" || s === "repo")) die(`token scopes are [${scopes.join(", ")}]; it needs public_repo (or repo) to fork and open PRs`);
+  const fork = await findFork(B);
+  console.log(`ok: token is ${login}; scopes [${scopes.join(", ")}]; can see ${B.repo}; fork ${fork || "not made yet (created at the first proposal)"}`);
 }
 
 async function propose(B, title, body) {
@@ -131,7 +150,8 @@ async function propose(B, title, body) {
     if (r.status === 0) die(`git ${what} are configured (${r.stdout.trim().split(NL).length} entr(ies)); refusing to push through them`);
     if (r.status !== 1) die(`could not read git config for ${what} (exit ${r.status})`);
   }
-  const url = `https://github.com/${B.repo}.git`;
+  const fork = await ensureFork(B);
+  const url = `https://github.com/${fork}.git`;
   // Drop inherited helpers (Alan's credential manager); ours is the only credential source.
   const push = git(B, [
     "-c", "credential.helper=", "-c", `credential.helper=!node "${SELF}" credential ${B.name}`,
@@ -139,11 +159,11 @@ async function propose(B, title, body) {
     "push", url, `refs/heads/${branch}:refs/heads/${branch}`,
   ], { stdio: ["ignore", "inherit", "inherit"], env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "never" } });
   if (push.status !== 0) die("git push failed (see above)");
-  const owner = B.repo.split("/")[0];
-  const pr = await api(B, "POST", `/repos/${B.repo}/pulls`, { title, body, head: branch, base: "main" });
+  const head = `${B.bot}:${branch}`;
+  const pr = await api(B, "POST", `/repos/${B.repo}/pulls`, { title, body, head, base: "main" });
   if (pr.status === 201) { console.log(`proposal opened: ${pr.json.html_url}`); return; }
   if (pr.status === 422) {
-    const open = await api(B, "GET", `/repos/${B.repo}/pulls?state=open&head=${owner}:${encodeURIComponent(branch)}`);
+    const open = await api(B, "GET", `/repos/${B.repo}/pulls?state=open&head=${encodeURIComponent(head)}`);
     if (open.status === 200 && open.json.length) { console.log(`branch updated; proposal already open: ${open.json[0].html_url}`); return; }
   }
   die(`opening the PR failed (HTTP ${pr.status}): ${pr.json?.message || pr.text.slice(0, 200)}`);
@@ -164,12 +184,11 @@ function flag(args, name) {
 }
 
 const [cmd, who, ...rest] = process.argv.slice(2);
-if (!cmd || !who) die("usage: soul-propose.mjs propose|check|accept-invite|credential <being> ...");
+if (!cmd || !who) die("usage: soul-propose.mjs propose|check|credential <being> ...");
 const B = being(who);
 try {
   if (cmd === "propose") await propose(B, flag(rest, "--title"), flag(rest, "--body"));
   else if (cmd === "check") await check(B);
-  else if (cmd === "accept-invite") await acceptInvite(B);
   else if (cmd === "credential") credential(B, rest[0]);
   else die(`unknown command "${cmd}"`);
 } catch (e) {
