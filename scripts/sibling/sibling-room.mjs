@@ -47,7 +47,7 @@ const { query } = await import("file:///" + join(repo, "scripts", "brains", "db.
 const parseEnv = (p) => {
   const env = {};
   if (!existsSync(p)) return env;
-  for (const l of readFileSync(p, "utf8").split("\n")) {
+  for (const l of readFileSync(p, "utf8").split(/\r?\n/)) {
     const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
     if (m) env[m[1]] = m[2].replace(/\r$/, "");
   }

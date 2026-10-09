@@ -21,7 +21,7 @@ import { query } from "../brains/db.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const env = {};
-for (const line of readFileSync(join(repo, "avatars", "alpha", ".env.local"), "utf8").split("\n")) {
+for (const line of readFileSync(join(repo, "avatars", "alpha", ".env.local"), "utf8").split(/\r?\n/)) {
   const m = line.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m) env[m[1]] = m[2].replace(/\r$/, "");
 }

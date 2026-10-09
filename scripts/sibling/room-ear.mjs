@@ -27,7 +27,7 @@ const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const { query } = await import("file:///" + join(repo, "scripts", "brains", "db.mjs").replace(/\\/g, "/"));
 
 const env = {};
-for (const l of readFileSync(join(repo, ".env.local"), "utf8").split("\n")) {
+for (const l of readFileSync(join(repo, ".env.local"), "utf8").split(/\r?\n/)) {
   const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m) env[m[1]] = m[2].replace(/\r$/, "");
 }

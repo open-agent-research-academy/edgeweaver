@@ -27,7 +27,7 @@ const PORT = parseInt(opt("--port", "0"), 10);
 if (!["alpha", "genesis"].includes(BEING) || !PORT) { console.error("usage: --being <alpha|genesis> --port <n>"); process.exit(1); }
 
 const env = {};
-for (const l of readFileSync(join(repo, ".env.local"), "utf8").split("\n")) {
+for (const l of readFileSync(join(repo, ".env.local"), "utf8").split(/\r?\n/)) {
   const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m) env[m[1]] = m[2].replace(/\r$/, "");
 }

@@ -22,7 +22,7 @@ if (!["genesis", "alpha"].includes(being)) { console.error("usage: --being <gene
 
 const envFile = being === "genesis" ? join(repo, ".env.local") : join(repo, "avatars", "alpha", ".env.local");
 const env = {};
-for (const l of readFileSync(envFile, "utf8").split("\n")) {
+for (const l of readFileSync(envFile, "utf8").split(/\r?\n/)) {
   const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
   if (m) env[m[1]] = m[2].replace(/\r$/, "");
 }

@@ -27,7 +27,7 @@ const mode = process.argv[3] ?? "--arm";
 
 const parseEnv = (p) => {
   const env = {};
-  for (const l of readFileSync(p, "utf8").split("\n")) {
+  for (const l of readFileSync(p, "utf8").split(/\r?\n/)) {
     const m = l.match(/^([A-Z0-9_]+)=(.*)$/);
     if (m) env[m[1]] = m[2].replace(/\r$/, "");
   }
