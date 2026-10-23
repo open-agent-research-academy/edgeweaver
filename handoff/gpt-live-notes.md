@@ -6,9 +6,9 @@
 ## The decision and the approvals
 
 Alan, 2026-10-23, after the voice options review: "This is the route I want to go", pointing at the
-GPT-Live-1 client-delegation row (recorded in D12, 2:27 PM ET). Then, when auto mode's classifier
+GPT-Live-1 client-delegation row (recorded in D12, 10:27 AM ET). Then, when auto mode's classifier
 stopped the build: "I set it to bypass permissions. You can continue. I authorize you to do this"
-(about 2:35 PM ET). The OpenAI key went into `.env.local` through the masked-secret-entry window
+(about 10:35 AM ET). The OpenAI key went into `.env.local` through the masked-secret-entry window
 (`SECRET_SAVED`), never through chat.
 
 ## Shape
