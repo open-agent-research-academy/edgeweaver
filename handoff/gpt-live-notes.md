@@ -1,0 +1,118 @@
+# GPT-Live voice bridge - working notes (2026-10-23)
+
+> TEST MODE throughout: Testweaver persona, no OB1, no soulfiles. Design authority: VOICE-STACK.md
+> plus decisions.md D12 as amended 2026-10-23. Read this file first when resuming the GPT-Live lane.
+
+## The decision and the approvals
+
+Alan, 2026-10-23, after the voice options review: "This is the route I want to go", pointing at the
+GPT-Live-1 client-delegation row (recorded in D12, 2:27 PM ET). Then, when auto mode's classifier
+stopped the build: "I set it to bypass permissions. You can continue. I authorize you to do this"
+(about 2:35 PM ET). The OpenAI key went into `.env.local` through the masked-secret-entry window
+(`SECRET_SAVED`), never through chat.
+
+## Shape
+
+```
+caller (phone via carrier SIP trunk, or browser via WebRTC)
+   |
+OpenAI GPT-Live-1 (ears + mouth + turn-taking; $0.05/min of session, per second)
+   |  sideband WebSocket: /v1/live/sessions/{id}/attach
+scripts/test-mode/gpt-live-server.mjs (this PC, port 8797)
+   |  transcript in -> LiveMind (claude-opus-5-5, effort low, Max plan, persistent session)
+   |  sentences out -> session.commentary.append (GPT-Live speaks them)
+```
+
+GPT-Live is configured in CLIENT delegation mode with instructions that make it the mouth only:
+every caller turn beyond a greeting or goodbye is delegated (`Generate <|SpawnThinking|>`), it never
+answers from its own knowledge, and it is told to keep the commentary wording as close to verbatim
+as it can. The delegation event carries no words; the server assembles the task from the live
+transcript (settles 250 ms after the last input delta, 800 ms cap) and also tells the mind what the
+voice said aloud since its last reply, so the mind knows what the caller actually heard.
+
+## What exists
+
+| Thing | Where |
+|---|---|
+| Bridge server (sessions, sideband, delegation loop, webhook, page) | `scripts/test-mode/gpt-live-server.mjs` |
+| Browser call page (mic, or `?synthetic=1` for a no-mic test caller) | `scripts/test-mode/gpt-live-page.html` |
+| WebSocket-primary smoke test (hearing + delegation only; see limit below) | `scripts/test-mode/gpt-live-e2e.mjs` |
+| Per-session transcript + timing log (gitignored; text only, no audio) | `logs/voice/gptlive-<stamp>-<id>.jsonl` |
+| Mind class (unchanged, shared with the July harness) | `scripts/test-mode/live-mind.mjs` |
+
+Run it:
+
+```powershell
+node C:\Users\agent\Project\Edgeweaver\scripts\test-mode\gpt-live-server.mjs
+```
+
+then open http://127.0.0.1:8797 and click Start call (the browser asks for the microphone). The
+header shows the version (g0.1), the mind and the voice. `/health` shows booleans only;
+`/selftest` runs one mind turn with no OpenAI involved; `?synthetic=1` makes the page speak a
+synthesized question into the call instead of using a microphone (what the automated check uses).
+
+Env in `.env.local`: `OPENAI_API_KEY` (set), `OPENAI_WEBHOOK_SECRET` (NOT set; phone calls are
+refused until it is), `EW_GPTLIVE_VOICE` (marin; others: alloy ash ballad beacon bossa cedar cinder
+coral delta echo gleam meridian quartz ripple sage shida shimmer stone tempo verse vesper willow),
+`EW_GPTLIVE_MODEL` (claude-opus-5-5), `EW_GPTLIVE_EFFORT` (low), `EW_GPTLIVE_MAX_MINUTES` (20,
+the cost guard), `EW_GPTLIVE_PAGE_TOKEN` (gate the page with `?k=` whenever it is tunnelled),
+`EW_GPTLIVE_PERSONA_FILE` (the arming seam; unset = Testweaver).
+
+## What was measured (2026-10-23, browser synthetic call, Opus 5.5 at effort low on the plan)
+
+| Step | Result |
+|---|---|
+| Session create over WebRTC, sideband attach | first attempt, 0.2 s after create |
+| Greeting | spoken: "I'm Testweaver, a test voice, what would you like to talk about?" |
+| Caller transcript | "What is a good way to start a morning" (synthesized speech, transcribed right) |
+| Question end to `session.delegation.created` | 0.7 s |
+| Delegation to the mind's first sentence | 2.15 s (GPT-Live said "Let me think." meanwhile) |
+| Voice fidelity | the two commentary sentences were spoken VERBATIM (log vs transcript) |
+| Billed | 15 s of session (about $0.013) plus a few cents of test TTS |
+
+So the paraphrase worry from the options review did not bite on this turn: with the instruction in
+place GPT-Live repeated Opus's words exactly. Keep checking `mind-reply` against the `voice`
+transcript rows in the log; that is the identity measurement.
+
+## Limits and known rough edges
+
+- Phone calls are NOT yet tested: no webhook secret, no carrier number (Alan's hands, below).
+- A session whose PRIMARY transport is a WebSocket refuses the sideband attach (HTTP 503 on every
+  try), so `gpt-live-e2e.mjs` proves hearing and delegation only. WebRTC (browser) attaches fine;
+  SIP uses the same accept-then-attach path as documented, untested here.
+- The filler ("Let me think.", "Hmm.") fires about 1 s after the question although the instruction
+  says three seconds; tune the instruction or accept it.
+- No escalation ladder in this lane yet (the July harness's "think hard" routing). One mind.
+- Delegation per turn is GPT-Live's judgment under our instruction; a casual remark might be
+  answered by GPT-Live itself. The log's `delegation` rows versus `transcript` rows show misses.
+- Session guard closes a call at 20 minutes; raise `EW_GPTLIVE_MAX_MINUTES` for long talks.
+
+## Alan's hands for the phone path
+
+1. Project id: platform.openai.com -> Settings -> General -> Project ID (`proj_...`). Not a secret;
+   put it in `.env.local` as `OPENAI_PROJECT_ID` for the notes, or just use it in step 3.
+2. Public URL for the webhook (the PC must receive OpenAI's incoming-call event):
+
+   ```powershell
+   cloudflared tunnel --url http://127.0.0.1:8797
+   ```
+
+   A quick tunnel prints a random `https://<words>.trycloudflare.com` URL and changes on every
+   start. For a stable URL use a named Cloudflare tunnel on a domain you own, or an ngrok static
+   domain; both are account decisions. Set `EW_GPTLIVE_PAGE_TOKEN` before tunnelling.
+3. Webhook: platform.openai.com -> Settings -> Webhooks -> Create: URL `<tunnel>/webhooks/openai`,
+   event `live.transport.incoming`. Copy the signing secret (`whsec_...`) and hand it over through
+   the masked window (the agent runs it): destination env-file, name `OPENAI_WEBHOOK_SECRET`.
+4. Carrier number: Telnyx (number about $1/month, inbound about $0.003/min) or Twilio ($1.15/month,
+   $0.0085/min). Create a SIP trunk / SIP connection whose origination (inbound) URI is
+   `sip:<PROJECT_ID>@sip.api.openai.com;transport=tls`, buy a US number, attach it to that trunk.
+   OpenAI needs TLS signalling on 5061 and SRTP media.
+5. Call the number with the server and the tunnel running; the server log shows `[call] incoming`,
+   then `sideband-open`, then the turns.
+
+## Arming (later, gated)
+
+The mind persona is the seam: `EW_GPTLIVE_PERSONA_FILE` swaps Testweaver for a file; the real being
+needs the frozen soul prefix plus OB1 recall and writeback, which live in `voice/mind-server.mjs`
+(dark-built A3) and are not wired into this lane yet. GROWING's V-gates and the V1 voice ceremony
+are unchanged by any of this; GPT-Live's voice is scaffolding, never presented as the being's own.

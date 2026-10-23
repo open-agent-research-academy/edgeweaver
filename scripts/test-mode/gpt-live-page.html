@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Testweaver on GPT-Live</title>
+<style>
+  :root { --bg:#f6f4ef; --fg:#1d1b17; --muted:#6b6660; --card:#fff; --accent:#2f6f5e; --line:#e3ded4; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#15140f; --fg:#efeae0; --muted:#a39d92; --card:#1f1d17; --accent:#7fc7ad; --line:#2d2a22; } }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.45 system-ui, sans-serif; }
+  main { max-width:720px; margin:0 auto; }
+  h1 { font-size:1.25rem; margin:0 0 .25rem; }
+  .meta { color:var(--muted); font-size:.85rem; }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; margin:1rem 0; align-items:center; }
+  button { font:inherit; padding:.6rem 1.1rem; border-radius:999px; border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button:disabled { opacity:.5; cursor:default; }
+  #status { font-weight:600; }
+  #log { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:.75rem 1rem; min-height:12rem; max-height:60vh; overflow:auto; }
+  .you { color:var(--accent); } .voice { } .sys { color:var(--muted); font-size:.85rem; }
+  .line { margin:.25rem 0; white-space:pre-wrap; }
+  #timing { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Testweaver on GPT-Live <span class="meta">__VERSION__</span></h1>
+  <div class="meta">TEST MODE: not Edgeweaver, no memory. Voice: GPT-Live-1 (__VOICE__). Mind: __MIND__ on the Max plan. Text and timings are logged to logs/voice/; no audio is recorded.</div>
+  <div class="row">
+    <button id="start" class="primary">Start call</button>
+    <button id="stop" disabled>End call</button>
+    <span id="status">idle</span>
+    <span id="timing" class="meta"></span>
+  </div>
+  <div id="log"></div>
+  <audio id="audio" autoplay playsinline></audio>
+</main>
+<script>
+// ?synthetic=1 : no microphone; a synthesized question (server /api/test-speech, ?q=) is played into
+// the outgoing track after the greeting. Used by the automated browser check. ?k=<token> gates the page.
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const qs = params.get("k") ? "?k=" + encodeURIComponent(params.get("k")) : "";
+const synthetic = params.get("synthetic") === "1";
+let pc = null, dc = null, sessionId = null, stream = null, poll = null, ac = null, dest = null, lastVoiceAt = 0, spoke = false;
+let lastRole = null, lastEl = null;
+window.__ew = { lines: [], events: [], status: "idle", sessionId: null, synthetic };
+function status(s) { $("status").textContent = s; window.__ew.status = s; }
+function sys(text) { const d = document.createElement("div"); d.className = "line sys"; d.textContent = text; $("log").appendChild(d); $("log").scrollTop = 1e9; lastRole = null; window.__ew.events.push({ t: Date.now(), text }); }
+function transcript(role, delta) {
+  if (role !== lastRole || !lastEl) { lastEl = document.createElement("div"); lastEl.className = "line " + role; lastEl.textContent = (role === "you" ? "You: " : "Voice: "); $("log").appendChild(lastEl); lastRole = role; window.__ew.lines.push({ role, text: "" }); }
+  lastEl.textContent += delta; window.__ew.lines[window.__ew.lines.length - 1].text += delta; $("log").scrollTop = 1e9;
+}
+function iceComplete(pc) { return new Promise((res) => { if (pc.iceGatheringState === "complete") return res(); const h = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", h); res(); } }; pc.addEventListener("icegatheringstatechange", h); setTimeout(res, 3000); }); }
+async function outgoingStream() {
+  if (!synthetic) return navigator.mediaDevices.getUserMedia({ audio: true });
+  ac = new AudioContext({ sampleRate: 24000 }); dest = ac.createMediaStreamDestination();
+  const osc = ac.createOscillator(); const g = ac.createGain(); g.gain.value = 0; osc.connect(g).connect(dest); osc.start(); // keeps the track alive, silently
+  return dest.stream;
+}
+async function speakSynthetic() {
+  if (spoke) return; spoke = true;
+  const q = params.get("q") || "What is a good way to start a morning?";
+  const r = await fetch("/api/test-speech" + (qs ? qs + "&" : "?") + "q=" + encodeURIComponent(q));
+  if (!r.ok) { sys("test speech failed: " + r.status); return; }
+  const buf = await ac.decodeAudioData(await r.arrayBuffer());
+  const src = ac.createBufferSource(); src.buffer = buf; src.connect(dest); src.start();
+  sys("synthetic caller says: " + q + " (" + buf.duration.toFixed(1) + "s)");
+  window.__ew.questionEndAt = Date.now() + buf.duration * 1000;
+}
+function handle(ev) {
+  switch (ev.type) {
+    case "session.started": status("live - talk"); sys("session started " + (ev.session?.id || sessionId || "")); break;
+    case "session.input_transcript.delta": transcript("you", ev.delta || ""); break;
+    case "session.output_transcript.delta": transcript("voice", ev.delta || ""); lastVoiceAt = Date.now(); break;
+    case "session.delegation.created": sys("thinking (delegated to the mind)"); window.__ew.lastDelegationAt = Date.now(); break;
+    case "session.usage.updated": $("timing").textContent = Math.round(ev.usage?.seconds || 0) + "s"; break;
+    case "session.closed": status("closed (" + (ev.reason || "") + ")"); sys("session closed, " + Math.round(ev.usage?.seconds || 0) + "s billed"); cleanup(); break;
+    case "error": sys("error: " + (ev.error?.message || JSON.stringify(ev.error))); break;
+  }
+}
+async function start() {
+  $("start").disabled = true; status(synthetic ? "synthetic caller..." : "mic...");
+  try {
+    stream = await outgoingStream();
+    pc = new RTCPeerConnection();
+    stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+    pc.ontrack = (e) => { $("audio").srcObject = e.streams[0] || new MediaStream([e.track]); $("audio").play().catch(() => sys("tap the page to allow audio")); };
+    pc.onconnectionstatechange = () => { sys("connection " + pc.connectionState); if (pc.connectionState === "failed") cleanup(); };
+    dc = pc.createDataChannel("oai-events");
+    dc.onmessage = (m) => { try { handle(JSON.parse(m.data)); } catch {} };
+    const offer = await pc.createOffer(); await pc.setLocalDescription(offer); await iceComplete(pc);
+    status("connecting...");
+    const r = await fetch("/api/session" + qs, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sdp: pc.localDescription.sdp }) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status);
+    sessionId = j.sessionId; window.__ew.sessionId = sessionId;
+    await pc.setRemoteDescription({ type: "answer", sdp: j.sdp });
+    $("stop").disabled = false;
+    const startedAt = Date.now();
+    poll = setInterval(async () => {
+      try { const s = await (await fetch("/sessions" + qs)).json(); const me = s.sessions.find((x) => x.id === sessionId); window.__ew.server = me || null;
+        if (me && me.turns.length) { const t = me.turns[me.turns.length - 1]; $("timing").textContent = (me.seconds|0) + "s, last mind first-sentence " + (t.firstSentenceMs ?? "?") + "ms"; } } catch {}
+      // synthetic: speak once the greeting has gone quiet (or 8s after start)
+      if (synthetic && !spoke && ((lastVoiceAt && Date.now() - lastVoiceAt > 1500) || Date.now() - startedAt > 8000)) speakSynthetic().catch((e) => sys("synthetic failed: " + e.message));
+    }, 500);
+  } catch (e) { sys("start failed: " + (e.message || e)); status("idle"); cleanup(); }
+}
+function stop() { $("stop").disabled = true; status("closing..."); try { dc.send(JSON.stringify({ type: "session.close", event_id: crypto.randomUUID() })); } catch {} fetch("/api/session/close" + qs, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionId }) }).catch(() => {}); setTimeout(cleanup, 10000); }
+function cleanup() { clearInterval(poll); poll = null; try { stream?.getTracks().forEach((t) => t.stop()); } catch {} try { pc?.close(); } catch {} try { ac?.close(); } catch {} pc = null; dc = null; $("start").disabled = false; $("stop").disabled = true; if ($("status").textContent.startsWith("live")) status("idle"); }
+$("start").onclick = start; $("stop").onclick = stop;
+</script>
+</body>
+</html>

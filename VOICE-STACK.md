@@ -199,3 +199,16 @@ gets a voice meter alongside the token meter.
   quality reaches the bar; the LiveKit architecture makes them a swap, not a rebuild.
 - **Telephony/SIP and V4 ambient: out of scope here.** Browser first; ambient belongs to
   Track P with its hardware mute switch and household consent gates.
+
+## 9. The GPT-Live lane (added 2026-10-23, D12 amendment)
+
+Alan chose OpenAI GPT-Live-1 in client-delegation mode as the realtime lane: GPT-Live is the
+ears, the mouth and the phone line (native SIP; WebRTC for the web page), and our own mind
+server is the brain, every caller turn delegated to it (Claude Opus 5.5 at effort low on the
+Max plan by default). This reverses the §8 rejection of an OpenAI shell for this lane only; the
+§2 cascade on LiveKit stays the fallback and the sovereignty path, and Hume (§8) is moot (its
+APIs sunset 2026-11-13). Measured on day one: the voice repeated the mind's sentences verbatim
+under the frontend instruction, delegation fired 0.7 s after the caller stopped, and the mind's
+first sentence followed 2.1 s later. Identity measurement from here on: the mind-reply rows
+against the voice transcript rows in logs/voice/gptlive-*.jsonl. Build, limits and the phone
+setup steps: handoff/gpt-live-notes.md.
