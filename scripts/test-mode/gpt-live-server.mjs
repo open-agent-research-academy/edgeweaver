@@ -13,6 +13,7 @@
 //   POST /api/session           {sdp} -> creates the GPT-Live session, attaches the sideband
 //   POST /api/session/close     {sessionId} -> graceful close
 //   POST /webhooks/openai       OpenAI webhook: live.transport.incoming (SIP) -> accept + attach
+//   POST /webhooks/telnyx       Telnyx Call Control webhook -> party line (party-line.mjs)
 //   GET  /sessions              live status (ids, seconds, turn timings) for the page
 //   GET  /selftest              one mind turn, no OpenAI involved (proves the plan-side brain)
 //   GET  /api/session-config    test-only: the session config the server sends
@@ -37,6 +38,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import WebSocket from "ws";
 import { LiveMind } from "./live-mind.mjs";
+import { PartyLine, verifyTelnyx } from "./party-line.mjs";
 
 const VERSION = "g0.1";
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -57,6 +59,12 @@ const cfg = {
   maxMinutes: Number(env.EW_GPTLIVE_MAX_MINUTES || 20),
   pageToken: env.EW_GPTLIVE_PAGE_TOKEN || "",
   personaFile: env.EW_GPTLIVE_PERSONA_FILE || "",
+  // party line (Telnyx Call Control): all five must be set for the phone route to work
+  telnyxKey: env.TELNYX_API_KEY || "",
+  telnyxPublicKey: env.TELNYX_PUBLIC_KEY || "",
+  telnyxAppId: env.TELNYX_APP_ID || "",
+  telnyxNumber: env.TELNYX_NUMBER || "",
+  openaiProjectId: env.OPENAI_PROJECT_ID || "",
 };
 if (!cfg.apiKey) { console.error("OPENAI_API_KEY missing in .env.local (use the masked-secret-entry window)"); process.exit(1); }
 
@@ -130,6 +138,25 @@ await mkdir(LOG_DIR, { recursive: true });
 
 // ---- the bridge: one GPT-Live session <-> one mind ----
 const sessions = new Map();
+
+// ---- the party line (Telnyx conference around one GPT-Live leg); see party-line.mjs ----
+const LINE_LOG = join(LOG_DIR, `partyline-${new Date().toISOString().slice(0, 10)}.jsonl`);
+const lineLog = (type, data = {}) => {
+  const row = { t: Date.now(), type, ...data };
+  appendFile(LINE_LOG, JSON.stringify(row) + "\n").catch(() => {});
+  console.log("[line]", type, data.from ?? data.humans ?? data.reason ?? data.error ?? "");
+};
+const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.openaiProjectId)
+  ? new PartyLine({ apiKey: cfg.telnyxKey, appId: cfg.telnyxAppId, number: cfg.telnyxNumber, openaiProjectId: cfg.openaiProjectId, log: lineLog,
+      onRoster: (count, info) => {
+        // tell the mind's voice who is in the room; the newest SIP session is the line's AI leg
+        const s = [...sessions.values()].filter((x) => x.kind === "sip" && !x.closed).sort((a, b) => b.startedAt - a.startedAt)[0];
+        if (!s) return;
+        const text = info.joined && count > 1 ? `Another caller just joined the line; there are now ${count} people. Greet the newcomer in one short sentence, then continue.`
+          : info.left && count >= 1 ? `A caller just left the line; ${count} ${count === 1 ? "person remains" : "people remain"}. Carry on without comment unless asked.` : null;
+        if (text) s.send({ type: "session.instructions.append", event_id: `roster_${randomUUID()}`, delegation_id: null, content: text });
+      } })
+  : null;
 
 class BridgeSession {
   constructor(id, kind) {
@@ -350,11 +377,11 @@ const server = createServer(async (req, res) => {
       return res.end(PAGE.replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: cfg.personaFile ? "file" : "testweaver" });
+      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxPublicKey: !!cfg.telnyxPublicKey });
     }
     if (req.method === "GET" && url.pathname === "/sessions") {
       if (!gated(url)) return json(res, 403, { error: "page token required" });
-      return json(res, 200, { sessions: [...sessions.values()].map((s) => s.status()) });
+      return json(res, 200, { sessions: [...sessions.values()].map((s) => s.status()), line: partyLine ? partyLine.status() : null });
     }
     if (req.method === "GET" && url.pathname === "/selftest") {
       // the plan-side brain, no OpenAI: proves the mind answers and how fast
@@ -411,6 +438,16 @@ const server = createServer(async (req, res) => {
       const s = sessions.get(sessionId); if (s) s.close();
       return json(res, 200, { ok: !!s });
     }
+    if (req.method === "POST" && url.pathname === "/webhooks/telnyx") {
+      const raw = await readBody(req);
+      if (!partyLine) return json(res, 503, { error: "party line not configured (TELNYX_API_KEY, TELNYX_APP_ID, TELNYX_NUMBER, OPENAI_PROJECT_ID)" });
+      if (!cfg.telnyxPublicKey) { console.error("telnyx webhook received but TELNYX_PUBLIC_KEY is not set; refusing"); return json(res, 503, { error: "telnyx public key not configured" }); }
+      if (!verifyTelnyx(req.headers, raw, cfg.telnyxPublicKey)) return json(res, 400, { error: "bad signature" });
+      let ev; try { ev = JSON.parse(raw); } catch { return json(res, 400, { error: "bad json" }); }
+      json(res, 200, { ok: true }); // answer fast; Telnyx retries slow endpoints
+      partyLine.handle(ev.data || ev).catch((e) => lineLog("line-error", { error: String(e.message || e) }));
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/webhooks/openai") {
       const raw = await readBody(req);
       if (!cfg.webhookSecret) { console.error("webhook received but OPENAI_WEBHOOK_SECRET is not set; refusing"); return json(res, 503, { error: "webhook secret not configured" }); }
@@ -441,7 +478,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(cfg.port, "0.0.0.0", () => {
-  console.log(`Testweaver on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"}`);
+  console.log(`Testweaver on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"} partyLine=${partyLine ? "armed" : "off (telnyx env missing)"}`);
 });
 
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { for (const s of sessions.values()) s.close(); setTimeout(() => process.exit(0), 1500); });
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { for (const s of sessions.values()) s.close(); if (partyLine) partyLine.shutdown().catch(() => {}); setTimeout(() => process.exit(0), 2500); });

@@ -133,6 +133,34 @@ Telnyx's guide notes the tested configuration sent `OpenAI-Alpha: quicksilver=v3
 sideband calls. The bridge does not send it (WebRTC worked without it); if a SIP accept ever returns
 4xx, that header is the first thing to try.
 
+## The party line (Alan, same evening: "if a second person calls the number, it makes it a party line")
+
+A direct number-to-OpenAI trunk gives one GPT-Live session per caller, so two callers would get two
+separate Edgeweavers. The party line instead puts the number on a Telnyx **Call Control application**
+whose webhooks hit the bridge at `/webhooks/telnyx` (`scripts/test-mode/party-line.mjs`):
+
+1. Every incoming call is answered and put into one Telnyx conference (beep on entry).
+2. The first caller's arrival dials ONE outbound SIP leg from that conference to
+   `sip:proj_...@sip.api.openai.com:5061;transport=tls` (TLS + SRTP). OpenAI fires
+   `live.transport.incoming`, the bridge accepts and attaches the mind as for any SIP call.
+3. A second caller joins the same conference; the bridge tells the voice "another caller just
+   joined" through the sideband so the mind greets them. GPT-Live hears the mixed room.
+4. When the last human hangs up, the AI leg is hung up (ends the GPT-Live meter) and the
+   conference closes. If OpenAI drops the leg while people remain, it is redialed (twice at most).
+
+One GPT-Live session per line regardless of head count: $0.05/min plus Telnyx conference and
+leg minutes (fractions of a cent). Telnyx webhooks are verified with the account's Ed25519 public
+key (`TELNYX_PUBLIC_KEY`, base64; portal Account > Keys & Credentials). Bridge env for the line:
+`TELNYX_API_KEY`, `TELNYX_PUBLIC_KEY`, `TELNYX_APP_ID`, `TELNYX_NUMBER`, `OPENAI_PROJECT_ID`.
+Setup order with `scripts/ops/telnyx-gptlive-setup.mjs`: `app https://<tunnel>/webhooks/telnyx`
+(creates the outbound voice profile with a $5/day cap and the app), `search`, `order +1...`
+(money, Alan's yes), then put the printed `TELNYX_APP_ID` and `TELNYX_NUMBER` in `.env.local`
+and restart the bridge. The tunnel hostname is baked into the app's webhook URL: rerun `app` with
+the new URL whenever the tunnel changes (same as the OpenAI webhook).
+
+Untested as of writing: no Telnyx account existed yet. The signature verifier is self-tested
+with a generated key pair; the conference and dial calls follow Telnyx's SDK types.
+
 ## Arming (later, gated)
 
 The mind persona is the seam: `EW_GPTLIVE_PERSONA_FILE` swaps Testweaver for a file; the real being
