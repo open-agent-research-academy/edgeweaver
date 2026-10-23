@@ -11,6 +11,22 @@ stopped the build: "I set it to bypass permissions. You can continue. I authoriz
 (about 10:35 AM ET). The OpenAI key went into `.env.local` through the masked-secret-entry window
 (`SECRET_SAVED`), never through chat.
 
+## Decisions in force (Alan, in chat, 2026-10-23, times ET, approximate to a few minutes)
+
+| Time | Alan's words | Effect |
+|---|---|---|
+| ~10:25 AM | "This is the route I want to go" (pointing at the GPT-Live-1 client-delegation row) | D12 amended; GPT-Live is the voice lane |
+| ~10:35 AM | "I set it to bypass permissions. You can continue. I authorize you to do this" | build continued in bypass mode after the classifier stop |
+| ~11:45 AM | "Yes, start the tunnel and open the masked window for the webhook secret; I will add the webhook and the number on my side." | phone path wiring began; webhook secret saved via the masked window |
+| ~7:30 PM | "Okay go ahead and use computer use to set up a Telnyx account" / "Try again" | declined (account creation and payment are Alan's hands); API-side setup scripted instead |
+| ~7:35 PM | "set this up with telnyx" | Telnyx is the carrier |
+| ~7:50 PM | "Okay I'm in. You can go ahead and use browser use to get me to the point where you need me again, either to put in some sort of billing or something else for the account" | portal walk in the built-in browser once he signs in there (or Chrome on his word) |
+| ~7:50 PM | "We want this set up so that multiple people can call into Edgeverse simultaneously Most of the time it'll be a one-on-one call but sometimes if the second person calls the number, it makes it a party line" | party line built: Telnyx conference around one GPT-Live leg |
+
+Now (7:59 PM ET): bridge + tunnel running in terminal tabs; party line coded and pushed, unarmed
+(no Telnyx env yet). Waiting on Alan: Telnyx sign-in in the browser pane or Chrome, OpenAI Project
+ID; then billing, API key (masked window, 1Password prompt first), app, number, tests.
+
 ## Shape
 
 ```
