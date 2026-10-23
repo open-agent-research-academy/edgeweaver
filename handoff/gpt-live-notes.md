@@ -110,6 +110,29 @@ transcript rows in the log; that is the identity measurement.
 5. Call the number with the server and the tunnel running; the server log shows `[call] incoming`,
    then `sideband-open`, then the turns.
 
+## Telnyx, by API (added the same evening)
+
+Alan chose Telnyx as the carrier ("set this up with telnyx"). Account creation, billing and the API
+key are his hands (an agent never creates accounts or enters payment details); everything after the
+key is `scripts/ops/telnyx-gptlive-setup.mjs`, which follows Telnyx's GPT-Live guide exactly:
+
+| Command | Does | Money |
+|---|---|---|
+| `status` | balance, the connection, its FQDN, owned numbers | no |
+| `connection` | FQDN connection "Edgeweaver GPT-Live": TLS + SRTP + Opus/G.711, FQDN `sip.api.openai.com:5061` (A record) | no |
+| `search [--area 415]` | buyable US voice numbers with upfront and monthly cost | no |
+| `order +1...` | buys that number, then assigns it | YES: only after Alan says yes to the printed number and price |
+| `assign +1...` | attaches an owned number to the connection and sets its translated number to `OPENAI_PROJECT_ID` | no |
+
+Env: `TELNYX_API_KEY` (masked window; portal.telnyx.com -> Account -> API Keys), `OPENAI_PROJECT_ID`
+(`proj_...`, platform.openai.com -> Settings -> General; not a secret). After `assign`, Telnyx INVITEs
+`sip:proj_...@sip.api.openai.com:5061;transport=tls` for every call to the number, OpenAI fires
+`live.transport.incoming` at the webhook, and the bridge takes it from there.
+
+Telnyx's guide notes the tested configuration sent `OpenAI-Alpha: quicksilver=v3` on the accept and
+sideband calls. The bridge does not send it (WebRTC worked without it); if a SIP accept ever returns
+4xx, that header is the first thing to try.
+
 ## Arming (later, gated)
 
 The mind persona is the seam: `EW_GPTLIVE_PERSONA_FILE` swaps Testweaver for a file; the real being
