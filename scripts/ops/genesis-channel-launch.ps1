@@ -14,6 +14,9 @@
 # its README.md) - never delete it, never put a real token in it.
 $env:TELEGRAM_STATE_DIR = Join-Path $env:USERPROFILE '.claude\channels\telegram-genesis'
 $env:EDGEWEAVER_CHANNEL_BEING = 'genesis'
+# MCP startup limit 120 s (default 30 s): right after a reboot logon, bun cold-starts the
+# telegram plugin past 30 s and the session comes up deaf (ops-log 2026-10-16).
+$env:MCP_TIMEOUT = '120000'
 # Keep OUR window title: claude overwrites the terminal title at startup unless this is
 # set (proven live 2026-07-21 on 2.1.177; the alternate name CLAUDE_CODE_DISABLE_TITLE
 # does NOT work on this version). This is why Alan had to rename tabs by hand.
