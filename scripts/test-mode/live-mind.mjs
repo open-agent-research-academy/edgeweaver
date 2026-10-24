@@ -10,7 +10,10 @@
 // the session immediately instead of silently blocking the next question, error results surface
 // as rejections instead of empty silence, and a per-turn watchdog timeout.
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
+import { existsSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { resolveClaude } from "../../voice/claude-backend.mjs";
 
 const TURN_TIMEOUT_MS = 45000;
@@ -39,7 +42,7 @@ export class LiveMind {
       "--tools", "none",
       "--strict-mcp-config",
       "--exclude-dynamic-system-prompt-sections",
-      "--system-prompt", this.systemPrompt,
+      ...this.#systemPromptArgs(),
     ], { shell: false, env: this.opts.thinking ? { ...process.env } : { ...process.env, MAX_THINKING_TOKENS: "0" } });
     this.proc.stdout.on("data", (d) => this.#onData(d));
     this.proc.stderr.on("data", () => { /* errors surface via result events */ });
@@ -52,6 +55,15 @@ export class LiveMind {
     // warmup turn: pays the cold-start cost now so the first real turn is warm
     this.current = { warmup: true, resolve: () => {}, reject: () => {}, onSentence: () => {}, pending: "", full: "" };
     this.#send("(warmup) Reply with just: ok");
+  }
+
+  // A being's persona (soul files + lessons) outgrows Windows' ~32k command line: hand it over as a
+  // file in the OS temp dir, named by content hash so every mind with the same persona shares one.
+  #systemPromptArgs() {
+    if (this.systemPrompt.length < 8000) return ["--system-prompt", this.systemPrompt];
+    const file = join(tmpdir(), `ew-mind-${createHash("sha256").update(this.systemPrompt).digest("hex").slice(0, 16)}.txt`);
+    if (!existsSync(file)) writeFileSync(file, this.systemPrompt, "utf8");
+    return ["--system-prompt-file", file];
   }
 
   #send(text) {

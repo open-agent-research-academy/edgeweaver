@@ -48,8 +48,8 @@ export class PartyLine {
    * @param {(type:string, data?:object)=>void} [o.log]
    * @param {(count:number, info:object)=>void} [o.onRoster] called when the human count changes
    */
-  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, beep = "on_enter", aiRedials = 2, confirmViaApi = false }) {
-    Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials, confirmViaApi });
+  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, beep = "on_enter", aiRedials = 2, confirmViaApi = false, allowedCallers = [] }) {
+    Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials, confirmViaApi, allowedCallers });
     this.log = log || ((t, d) => console.log("[line]", t, d ? JSON.stringify(d) : ""));
     this.onRoster = onRoster || (() => {});
     this.reset();
@@ -99,6 +99,12 @@ export class PartyLine {
       switch (t) {
         case "call.initiated":
           if (p.direction !== "incoming") return;
+          // an armed being's line is pinned to its callers (Alan-only until the village opens); unknown numbers never reach it
+          if (this.allowedCallers.length && !this.allowedCallers.includes(p.from)) {
+            this.log("caller-refused", { from: p.from });
+            await this.api(`/calls/${p.call_control_id}/actions/reject`, { cause: "CALL_REJECTED" });
+            return;
+          }
           this.pending.set(p.call_control_id, { from: p.from, initiatedAt: Date.now() });
           this.log("caller-ringing", { from: p.from });
           await this.api(`/calls/${p.call_control_id}/actions/answer`, { client_state: b64({ role: "human" }), command_id: `ans_${p.call_control_id.slice(-8)}` });

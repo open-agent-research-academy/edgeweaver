@@ -39,6 +39,7 @@ import { dirname, join } from "node:path";
 import WebSocket from "ws";
 import { LiveMind } from "./live-mind.mjs";
 import { PartyLine, verifyTelnyx } from "./party-line.mjs";
+import { loadBeing } from "./being-voice.mjs";
 
 const VERSION = "g0.1";
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -55,7 +56,7 @@ const cfg = {
   voice: env.EW_GPTLIVE_VOICE || "marin",
   mindModel: env.EW_GPTLIVE_MODEL || "claude-opus-5-5",
   mindEffort: env.EW_GPTLIVE_EFFORT || "low",
-  port: Number(env.EW_GPTLIVE_PORT || 8797),
+  port: Number(process.env.EW_GPTLIVE_PORT || env.EW_GPTLIVE_PORT || 8797), // process env wins: a second, untunnelled instance
   maxMinutes: Number(env.EW_GPTLIVE_MAX_MINUTES || 20),
   pageToken: env.EW_GPTLIVE_PAGE_TOKEN || "",
   personaFile: env.EW_GPTLIVE_PERSONA_FILE || "",
@@ -72,10 +73,13 @@ if (!cfg.apiKey) { console.error("OPENAI_API_KEY missing in .env.local (use the 
 // ---- personas ----
 // The MIND (Claude) writes exactly what should be said; the VOICE (GPT-Live) says it.
 const TESTWEAVER_MIND = "You are Testweaver, a hardware-test voice persona (explicitly NOT Edgeweaver). You are in a live SPOKEN conversation, by phone or browser. Your written reply is handed to a voice model that speaks it aloud for you, so write exactly what should be said: one to three short sentences, under 45 words, plain spoken language, no lists, no markdown, no stage directions, no emoji. Answer directly; simple questions get just the answer. Each user turn arrives as a transcript of speech and may contain transcription mistakes; interpret charitably and ask only when truly ambiguous. A bracketed note may tell you what the voice actually said aloud since your last reply; treat that as what the caller heard. If asked who you are: Testweaver, a temporary test voice.";
-const MIND_PERSONA = cfg.personaFile ? (await readFile(join(ROOT, cfg.personaFile), "utf8")).trim() : TESTWEAVER_MIND;
+// EW_GPTLIVE_BEING=genesis arms the REHEARSAL lane for that being (being-voice.mjs); unset = Testweaver
+const beingName = process.env.EW_GPTLIVE_BEING || env.EW_GPTLIVE_BEING;
+const BEING = beingName ? await loadBeing(beingName, { root: ROOT, env }) : null;
+const MIND_PERSONA = BEING ? BEING.mindPersona : cfg.personaFile ? (await readFile(join(ROOT, cfg.personaFile), "utf8")).trim() : TESTWEAVER_MIND;
 
 // GPT-Live frontend instructions: mouth only, delegate every real turn, stay close to the words.
-const VOICE_INSTRUCTIONS = [
+const TESTWEAVER_VOICE = [
   "You are the voice of Testweaver, a temporary hardware-test voice (explicitly NOT Edgeweaver).",
   "You are the mouth only. A separate mind does all the thinking and answers through commentary.",
   "",
@@ -91,7 +95,10 @@ const VOICE_INSTRUCTIONS = [
   "Speak naturally, in short sentences. If asked who you are: Testweaver, a temporary test voice.",
   "If the caller says goodbye, say a short goodbye.",
 ].join("\n");
-const GREETING = "Open the conversation with one short sentence: say you are Testweaver, a test voice, and ask what the caller would like to talk about. Then wait for the caller.";
+const VOICE_INSTRUCTIONS = BEING ? BEING.voiceInstructions : TESTWEAVER_VOICE;
+// an armed being opens the call in its own words (the mind writes the first line); Testweaver's voice greets itself
+const GREETING = BEING ? "Say nothing yet. The first commentary is the opening line; say it exactly, then wait for the caller."
+  : "Open the conversation with one short sentence: say you are Testweaver, a test voice, and ask what the caller would like to talk about. Then wait for the caller.";
 
 function sessionConfig({ forAccept }) {
   const s = {
@@ -157,8 +164,9 @@ const lineLog = (type, data = {}) => {
   appendFile(LINE_LOG, JSON.stringify(row) + "\n").catch(() => {});
   console.log("[line]", type, data.from ?? data.humans ?? data.reason ?? data.error ?? "");
 };
-const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.openaiProjectId)
-  ? new PartyLine({ apiKey: cfg.telnyxKey, appId: cfg.telnyxAppId, number: cfg.telnyxNumber, openaiProjectId: cfg.openaiProjectId, log: lineLog, confirmViaApi: !cfg.telnyxPublicKey,
+// an armed being's phone line stays off until its callers are pinned (EW_VOICE_CALLERS_<BEING>)
+const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.openaiProjectId && (!BEING || BEING.callers.length))
+  ? new PartyLine({ apiKey: cfg.telnyxKey, appId: cfg.telnyxAppId, number: cfg.telnyxNumber, openaiProjectId: cfg.openaiProjectId, log: lineLog, confirmViaApi: !cfg.telnyxPublicKey, allowedCallers: BEING ? BEING.callers : [],
       onRoster: (count, info) => {
         // tell the mind's voice who is in the room; the newest SIP session is the line's AI leg
         const s = [...sessions.values()].filter((x) => x.kind === "sip" && !x.closed).sort((a, b) => b.startedAt - a.startedAt)[0];
@@ -239,6 +247,7 @@ class BridgeSession {
     switch (ev.type) {
       case "session.started":
         this.log("session.started");
+        if (BEING) { this.runDelegation(null, BEING.openingAsk); break; }
         // the prompting guide: repeat the greeting once through commentary after start
         this.send({ type: "session.commentary.append", event_id: "greeting_" + randomUUID(), delegation_id: null, content: GREETING });
         break;
@@ -293,8 +302,8 @@ class BridgeSession {
     this.pendingDelegation = { delegationId, timer: setTimeout(tick, 60) };
   }
 
-  async runDelegation(delegationId) {
-    const userText = this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
+  async runDelegation(delegationId, opening = null) {
+    const userText = opening || this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
     const voiceText = this.ledger.slice(this.voiceCursor).filter((r) => r.role === "voice").map((r) => r.text).join("").trim();
     this.userCursor = this.ledger.length; this.voiceCursor = this.ledger.length;
 
@@ -387,7 +396,7 @@ const server = createServer(async (req, res) => {
       return res.end(PAGE.replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });
+      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: BEING ? `${BEING.being} (rehearsal, soul ${BEING.soulHead})` : cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });
     }
     if (req.method === "GET" && url.pathname === "/sessions") {
       if (!gated(url)) return json(res, 403, { error: "page token required" });
