@@ -1,0 +1,26 @@
+{
+  "schema": "bounce-state/1.1",
+  "runner": "co-evolve-bouncer.sh",
+  "mode": "bounce-only",
+  "task": "C:/Users/agent/Project/Edgeweaver/runs/stakes-tier-plan.md",
+  "input_type": "file",
+  "baseline_file": "original-input.md",
+  "final_file": "working.md",
+  "status": "aborted",
+  "convergence_status": null,
+  "started_at": "2026-09-11T00:11:27Z",
+  "finished_at": "2026-09-11T00:20:25Z",
+  "passes": [
+    {
+      "pass": 1,
+      "role": "reviewer",
+      "agent": "claude",
+      "output_raw": "pass-1-reviewer-claude-raw.md",
+      "output_clean": "pass-1-clean.md",
+      "contested": 3,
+      "clarify": 2,
+      "total_markers": 5,
+      "word_count": 3568
+    }
+  ]
+}
