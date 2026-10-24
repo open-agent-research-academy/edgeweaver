@@ -23,4 +23,6 @@ Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 # Model + effort come from the fleet policy (scripts/ops/model-policy.mjs; /mind in Telegram).
 . (Join-Path $PSScriptRoot 'model-policy.ps1')
 $mp = Get-FleetModelArgs -Agent alpha -Role channel
-claude "/wake-edgeweaver-alpha" @mp --channels plugin:telegram@claude-plugins-official
+# Wake-first guard: a message queued before startup must not be answered by plain Claude.
+. (Join-Path $PSScriptRoot 'channel-wake-guard.ps1')
+claude "/wake-edgeweaver-alpha" @mp --append-system-prompt (Get-ChannelWakeGuard alpha) --channels plugin:telegram@claude-plugins-official
