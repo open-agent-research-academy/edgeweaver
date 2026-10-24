@@ -4,6 +4,8 @@
 // emitted SENTENCE BY SENTENCE so TTS can start on sentence one while the rest generates.
 // Latency levers (measured 2026-07-07, warm turns): --tools none + custom system prompt shrink the
 // prompt ~22k -> ~360 tokens; MAX_THINKING_TOKENS=0 removes the think-before-speak delay.
+// --strict-mcp-config (2026-10-24): skips user MCP servers and plugin servers (the telegram plugin
+// cost ~7 s of cold start and would start a poller on the default bot); 16.0 s -> 9.0 s measured.
 // v2 (2026-07-08): real FIFO turn queue, true interrupt (control_request) so a barged turn frees
 // the session immediately instead of silently blocking the next question, error results surface
 // as rejections instead of empty silence, and a per-turn watchdog timeout.
@@ -35,6 +37,7 @@ export class LiveMind {
       "--model", this.model,
       "--effort", this.opts.effort,
       "--tools", "none",
+      "--strict-mcp-config",
       "--exclude-dynamic-system-prompt-sections",
       "--system-prompt", this.systemPrompt,
     ], { shell: false, env: this.opts.thinking ? { ...process.env } : { ...process.env, MAX_THINKING_TOKENS: "0" } });

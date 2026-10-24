@@ -140,6 +140,16 @@ await mkdir(LOG_DIR, { recursive: true });
 // ---- the bridge: one GPT-Live session <-> one mind ----
 const sessions = new Map();
 
+// One spare mind stays warm so a call never waits on a cold start (9-17 s on ITHELAST19, while the
+// first question lands ~10 s into a call). A call takes the spare and a new one warms behind it.
+const newMind = () => { const m = new LiveMind(cfg.mindModel, MIND_PERSONA, { effort: cfg.mindEffort, thinking: false, timeoutMs: 60000 }); m.start(); return m; };
+let spareMind = newMind();
+const takeMind = () => {
+  const m = spareMind; // a spare whose process died restarts lazily on its first ask
+  spareMind = newMind();
+  return m;
+};
+
 // ---- the party line (Telnyx conference around one GPT-Live leg); see party-line.mjs ----
 const LINE_LOG = join(LOG_DIR, `partyline-${new Date().toISOString().slice(0, 10)}.jsonl`);
 const lineLog = (type, data = {}) => {
@@ -171,8 +181,7 @@ class BridgeSession {
     this.turns = [];               // completed turn timings for /sessions
     this.pendingDelegation = null; // settle timer handle
     this.logFile = join(LOG_DIR, `gptlive-${new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19)}-${id.slice(-6)}.jsonl`);
-    this.mind = new LiveMind(cfg.mindModel, MIND_PERSONA, { effort: cfg.mindEffort, thinking: false, timeoutMs: 60000 });
-    this.mind.start(); // warm now, so the first delegated turn is not a cold start
+    this.mind = takeMind(); // already warm, so the first delegated turn is not a cold start
     this.log("session-start", { version: VERSION, kind, voice: cfg.voice, mind: cfg.mindModel, effort: cfg.mindEffort, liveModel: LIVE_MODEL });
     sessions.set(id, this);
   }
@@ -487,4 +496,4 @@ server.listen(cfg.port, "0.0.0.0", () => {
   console.log(`Testweaver on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"} partyLine=${partyLine ? "armed" : "off (telnyx env missing)"}`);
 });
 
-for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { for (const s of sessions.values()) s.close(); if (partyLine) partyLine.shutdown().catch(() => {}); setTimeout(() => process.exit(0), 2500); });
+for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { spareMind.stop(); for (const s of sessions.values()) s.close(); if (partyLine) partyLine.shutdown().catch(() => {}); setTimeout(() => process.exit(0), 2500); });
