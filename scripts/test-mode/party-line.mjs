@@ -48,8 +48,8 @@ export class PartyLine {
    * @param {(type:string, data?:object)=>void} [o.log]
    * @param {(count:number, info:object)=>void} [o.onRoster] called when the human count changes
    */
-  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, beep = "on_enter", aiRedials = 2 }) {
-    Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials });
+  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, beep = "on_enter", aiRedials = 2, confirmViaApi = false }) {
+    Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials, confirmViaApi });
     this.log = log || ((t, d) => console.log("[line]", t, d ? JSON.stringify(d) : ""));
     this.onRoster = onRoster || (() => {});
     this.reset();
@@ -76,10 +76,25 @@ export class PartyLine {
     return j;
   }
 
+  // Without the account's public key (not offered at every Telnyx account level), authenticity comes
+  // from asking Telnyx about the call itself: a forged event names a call that does not exist or is
+  // not in the claimed state. Costs one GET per event; fine at party-line volumes.
+  async confirm(t, p) {
+    if (!this.confirmViaApi || !p.call_control_id) return true;
+    try {
+      const j = await this.api(`/calls/${encodeURIComponent(p.call_control_id)}`, undefined, "GET");
+      const alive = j?.data?.is_alive;
+      if (t === "call.hangup") return alive === false;
+      if (t === "call.initiated" || t === "call.answered") return alive === true;
+      return true;
+    } catch (e) { this.log("confirm-failed", { event: t, error: String(e.message || e) }); return false; }
+  }
+
   // Telnyx webhook `data` object: { event_type, payload: {...} }
   async handle(data) {
     const t = data?.event_type, p = data?.payload || {};
     const role = unb64(p.client_state).role;
+    if (/^call\./.test(t) && !(await this.confirm(t, p))) { this.log("unconfirmed-event-dropped", { event: t }); return; }
     try {
       switch (t) {
         case "call.initiated":

@@ -62,6 +62,7 @@ const cfg = {
   // party line (Telnyx Call Control): all five must be set for the phone route to work
   telnyxKey: env.TELNYX_API_KEY || "",
   telnyxPublicKey: env.TELNYX_PUBLIC_KEY || "",
+  telnyxWebhookToken: env.TELNYX_WEBHOOK_TOKEN || "", // used when the account level withholds the public key
   telnyxAppId: env.TELNYX_APP_ID || "",
   telnyxNumber: env.TELNYX_NUMBER || "",
   openaiProjectId: env.OPENAI_PROJECT_ID || "",
@@ -147,7 +148,7 @@ const lineLog = (type, data = {}) => {
   console.log("[line]", type, data.from ?? data.humans ?? data.reason ?? data.error ?? "");
 };
 const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.openaiProjectId)
-  ? new PartyLine({ apiKey: cfg.telnyxKey, appId: cfg.telnyxAppId, number: cfg.telnyxNumber, openaiProjectId: cfg.openaiProjectId, log: lineLog,
+  ? new PartyLine({ apiKey: cfg.telnyxKey, appId: cfg.telnyxAppId, number: cfg.telnyxNumber, openaiProjectId: cfg.openaiProjectId, log: lineLog, confirmViaApi: !cfg.telnyxPublicKey,
       onRoster: (count, info) => {
         // tell the mind's voice who is in the room; the newest SIP session is the line's AI leg
         const s = [...sessions.values()].filter((x) => x.kind === "sip" && !x.closed).sort((a, b) => b.startedAt - a.startedAt)[0];
@@ -377,7 +378,7 @@ const server = createServer(async (req, res) => {
       return res.end(PAGE.replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxPublicKey: !!cfg.telnyxPublicKey });
+      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });
     }
     if (req.method === "GET" && url.pathname === "/sessions") {
       if (!gated(url)) return json(res, 403, { error: "page token required" });
@@ -438,11 +439,16 @@ const server = createServer(async (req, res) => {
       const s = sessions.get(sessionId); if (s) s.close();
       return json(res, 200, { ok: !!s });
     }
-    if (req.method === "POST" && url.pathname === "/webhooks/telnyx") {
+    if (req.method === "POST" && url.pathname.startsWith("/webhooks/telnyx")) {
       const raw = await readBody(req);
       if (!partyLine) return json(res, 503, { error: "party line not configured (TELNYX_API_KEY, TELNYX_APP_ID, TELNYX_NUMBER, OPENAI_PROJECT_ID)" });
-      if (!cfg.telnyxPublicKey) { console.error("telnyx webhook received but TELNYX_PUBLIC_KEY is not set; refusing"); return json(res, 503, { error: "telnyx public key not configured" }); }
-      if (!verifyTelnyx(req.headers, raw, cfg.telnyxPublicKey)) return json(res, 400, { error: "bad signature" });
+      // authenticity: Ed25519 signature when the account has a public key; otherwise the secret URL
+      // token (and the party line confirms each call event against the Telnyx API before acting)
+      let authentic = false;
+      if (cfg.telnyxPublicKey) authentic = url.pathname === "/webhooks/telnyx" && verifyTelnyx(req.headers, raw, cfg.telnyxPublicKey);
+      else if (cfg.telnyxWebhookToken) authentic = url.pathname === `/webhooks/telnyx/${cfg.telnyxWebhookToken}`;
+      else { console.error("telnyx webhook received but neither TELNYX_PUBLIC_KEY nor TELNYX_WEBHOOK_TOKEN is set; refusing"); return json(res, 503, { error: "telnyx webhook verification not configured" }); }
+      if (!authentic) return json(res, 404, { error: "not found" });
       let ev; try { ev = JSON.parse(raw); } catch { return json(res, 400, { error: "bad json" }); }
       json(res, 200, { ok: true }); // answer fast; Telnyx retries slow endpoints
       partyLine.handle(ev.data || ev).catch((e) => lineLog("line-error", { error: String(e.message || e) }));

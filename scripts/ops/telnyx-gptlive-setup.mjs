@@ -15,7 +15,7 @@
 //   status                   balance, apps, connections, numbers, public key presence (read-only)
 //   app <webhook-url>        create or update the Call Control app (+ outbound voice profile) for that URL
 //   connection               (legacy) create the FQDN connection + FQDN if missing
-//   search [--area 415]      list buyable US voice numbers with prices (read-only)
+//   search [--area 415] [--type local|toll_free]   list buyable US voice numbers with prices (read-only)
 //   order +1XXXXXXXXXX       BUY that number (money), then assign it to the app
 //   assign +1XXXXXXXXXX      attach an owned number to the app (or --legacy: to the FQDN connection + translated number)
 // Env (.env.local): TELNYX_API_KEY (required), OPENAI_PROJECT_ID (legacy assign; the bridge needs it too),
@@ -62,8 +62,10 @@ async function findApp() {
   return (j.data || []).find((a) => a.application_name === APP_NAME) || null;
 }
 async function findProfile() {
-  const j = await api(`/outbound_voice_profiles?filter[name][contains]=${encodeURIComponent(PROFILE_NAME)}&page[size]=50`);
-  return (j.data || []).find((p) => p.name === PROFILE_NAME) || null;
+  // account levels cap the profile count (one at Paid), so reuse any existing enabled profile rather than create a second
+  const j = await api(`/outbound_voice_profiles?page[size]=50`);
+  const all = j.data || [];
+  return all.find((p) => p.name === PROFILE_NAME) || all.find((p) => p.enabled) || all[0] || null;
 }
 async function findConnection() {
   const j = await api(`/fqdn_connections?filter[connection_name][contains]=${encodeURIComponent(CONN_NAME)}&page[size]=50`);
@@ -93,15 +95,18 @@ async function cmdStatus() {
 async function cmdApp() {
   const url = args.find((a) => /^https:\/\//.test(a));
   if (!url) throw new Error("app needs the webhook URL, e.g. https://<tunnel>/webhooks/telnyx");
+  // the bridge verifies by Ed25519 when the account offers a public key, else by this secret path segment
+  const token = env.TELNYX_WEBHOOK_TOKEN || "";
+  const webhookUrl = token && !url.includes(token) ? url.replace(/\/$/, "") + "/" + token : url;
   let prof = await findProfile();
   if (!prof) {
     prof = (await api("/outbound_voice_profiles", { method: "POST", body: { name: PROFILE_NAME, traffic_type: "conversational", service_plan: "global", enabled: true, usage_payment_method: "rate-deck", concurrent_call_limit: 4, daily_spend_limit: "5.00", daily_spend_limit_enabled: true } })).data;
     console.log(`created outbound voice profile ${prof.id} (daily spend cap $5)`);
   } else console.log(`outbound voice profile exists: ${prof.id}`);
   let app = await findApp();
-  const body = { application_name: APP_NAME, webhook_event_url: url, webhook_api_version: "2", active: true, anchorsite_override: "Latency", dtmf_type: "RFC 2833", first_command_timeout: true, first_command_timeout_secs: 20, inbound: { channel_limit: 6 }, outbound: { channel_limit: 2, outbound_voice_profile_id: prof.id } };
+  const body = { application_name: APP_NAME, webhook_event_url: webhookUrl, webhook_api_version: "2", active: true, anchorsite_override: "Latency", dtmf_type: "RFC 2833", first_command_timeout: true, first_command_timeout_secs: 20, inbound: { channel_limit: 6 }, outbound: { channel_limit: 2, outbound_voice_profile_id: prof.id } };
   if (!app) { app = (await api("/call_control_applications", { method: "POST", body })).data; console.log(`created call control app ${app.id}`); }
-  else { app = (await api(`/call_control_applications/${app.id}`, { method: "PATCH", body })).data; console.log(`updated call control app ${app.id} (webhook ${url})`); }
+  else { app = (await api(`/call_control_applications/${app.id}`, { method: "PATCH", body })).data; console.log(`updated call control app ${app.id} (webhook ${webhookUrl.replace(token || "<none>", "<token>")})`); }
   console.log(`\nbridge env: TELNYX_APP_ID=${app.id}`);
 }
 
@@ -120,7 +125,8 @@ async function cmdConnection() {
 
 async function cmdSearch() {
   const area = flag("--area");
-  const q = new URLSearchParams({ "filter[country_code]": "US", "filter[features][]": "voice", "filter[limit]": "10", "filter[exclude_held_numbers]": "true" });
+  const type = flag("--type") || "local"; // local numbers: cheaper inbound minutes than toll-free
+  const q = new URLSearchParams({ "filter[country_code]": "US", "filter[features][]": "voice", "filter[limit]": "10", "filter[exclude_held_numbers]": "true", "filter[phone_number_type]": type });
   if (area) q.set("filter[national_destination_code]", area);
   const rows = (await api(`/available_phone_numbers?${q.toString()}`)).data || [];
   if (!rows.length) { console.log("no numbers returned for that filter"); return; }
