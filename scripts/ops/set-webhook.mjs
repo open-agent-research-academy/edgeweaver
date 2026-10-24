@@ -17,8 +17,8 @@ import { fileURLToPath } from "node:url";
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const RECEIVER = "https://edgeweaver-channel-journal.vercel.app/api/webhook";
 const STATE_DIRS = {
-  alpha: "C:\\Users\\agent\\.claude\\channels\\telegram-alpha",
-  genesis: "C:\\Users\\agent\\.claude\\channels\\telegram-genesis",
+  alpha: join((process.env.USERPROFILE || process.env.HOME), ".claude", "channels", "telegram-alpha"),
+  genesis: join((process.env.USERPROFILE || process.env.HOME), ".claude", "channels", "telegram-genesis"),
 };
 
 const being = process.argv[2];

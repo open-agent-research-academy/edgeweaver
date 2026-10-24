@@ -4,13 +4,15 @@
 # Returns @('--model', X, '--effort', Y) from scripts/ops/model-policy.mjs (live
 # state/model-policy.json over the committed default). If node or the policy fails, the
 # launcher must still come up, so the fallback is the fleet default, never a stale pin.
+# Resolved once, at dot-source time, from this file's own folder (portable across machines).
+$script:FleetModelPolicyMjs = Join-Path $PSScriptRoot 'model-policy.mjs'
 function Get-FleetModelArgs {
   param(
     [Parameter(Mandatory = $true)][string]$Agent,
     [string]$Role = 'channel',
     [string[]]$Fallback = @('--model', 'claude-opus-5-5', '--effort', 'medium')
   )
-  $script = 'C:\Users\agent\Project\Edgeweaver\scripts\ops\model-policy.mjs'
+  $script = $script:FleetModelPolicyMjs
   try {
     # cmd owns the stderr redirect (PS 5.1 wraps native stderr in error records).
     $out = cmd /c "node ""$script"" args $Agent $Role 2>nul"

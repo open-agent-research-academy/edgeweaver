@@ -19,9 +19,9 @@ import { dirname, join, basename, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const LIVE_DIR = "C:\\Users\\agent\\.claude\\projects\\C--Users-agent-Project-Edgeweaver";
+const LIVE_DIR = join((process.env.USERPROFILE || process.env.HOME), ".claude", "projects", join(dirname(fileURLToPath(import.meta.url)), "..", "..").replace(/[^A-Za-z0-9]/g, "-"));
 const ARCHIVE_DIR = join(repo, "state", "transcripts");
-const INBOX = join(process.env.USERPROFILE || "C:\\Users\\agent", ".claude", "channels", "telegram-alpha", "inbox");
+const INBOX = join(process.env.USERPROFILE || process.env.HOME, ".claude", "channels", "telegram-alpha", "inbox");
 const OUT_DIR = join(repo, "tools", "alpha-dashboard", "public", "media");
 const dry = process.argv.includes("--dry");
 

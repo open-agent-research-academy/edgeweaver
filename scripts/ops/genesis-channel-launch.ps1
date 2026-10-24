@@ -12,15 +12,15 @@
 # channel silently never attaches, no poller, no error), while the spawned server reads
 # TELEGRAM_STATE_DIR. So the default dir MUST hold the DECOY config (invalid token; see
 # its README.md) - never delete it, never put a real token in it.
-$env:TELEGRAM_STATE_DIR = 'C:\Users\agent\.claude\channels\telegram-genesis'
+$env:TELEGRAM_STATE_DIR = Join-Path $env:USERPROFILE '.claude\channels\telegram-genesis'
 $env:EDGEWEAVER_CHANNEL_BEING = 'genesis'
 # Keep OUR window title: claude overwrites the terminal title at startup unless this is
 # set (proven live 2026-07-21 on 2.1.177; the alternate name CLAUDE_CODE_DISABLE_TITLE
 # does NOT work on this version). This is why Alan had to rename tabs by hand.
 $env:CLAUDE_CODE_DISABLE_TERMINAL_TITLE = '1'
 $host.UI.RawUI.WindowTitle = 'EdgeweaverGenesisTelegram'
-Set-Location 'C:\Users\agent\Project\Edgeweaver'
+Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 # Model + effort come from the fleet policy (scripts/ops/model-policy.mjs; /mind in Telegram).
-. 'C:/Users/agent/Project/Edgeweaver/scripts/ops/model-policy.ps1'
+. (Join-Path $PSScriptRoot 'model-policy.ps1')
 $mp = Get-FleetModelArgs -Agent genesis -Role channel
 claude "/wake-edgeweaver-genesis" @mp --channels plugin:telegram@claude-plugins-official

@@ -3,5 +3,5 @@
 # other calls. Started by the cutover choreography (plan section 10) and, once armed,
 # by a logon task; the alpha watchdog gains a shim check at arming, not before.
 $host.UI.RawUI.WindowTitle = 'EdgeweaverAlphaShim'
-Set-Location 'C:\Users\agent\Project\Edgeweaver'
+Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 node scripts\ops\telegram-shim.mjs --being alpha --port 8471

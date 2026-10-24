@@ -25,7 +25,7 @@ const NL = /\r?\n/;
 const BEINGS = {
   alpha: {
     repo: "open-agent-research-academy/edgeweaver-alpha-soul",
-    dir: "C:/Users/agent/Project/edgeweaver-alpha-soul",
+    dir: join(ROOT, "..", "edgeweaver-alpha-soul").replace(/\\/g, "/"),   // sibling of this repo, as on every host
     env: join(ROOT, "avatars", "alpha", ".env.local"),
     key: "EW_ALPHA_GITHUB_TOKEN",
     bot: "edgeweaver-alpha",

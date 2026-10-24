@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node C:/Users/agent/Project/Edgeweaver/scripts/ops/channel-notify-hook.mjs prompt",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/ops/channel-notify-hook.mjs\" prompt",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node C:/Users/agent/Project/Edgeweaver/scripts/ops/channel-notify-hook.mjs notify",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/ops/channel-notify-hook.mjs\" notify",
             "timeout": 30
           }
         ]
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node C:/Users/agent/Project/Edgeweaver/scripts/ops/channel-notify-hook.mjs clear",
+            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/ops/channel-notify-hook.mjs\" clear",
             "timeout": 10
           }
         ]

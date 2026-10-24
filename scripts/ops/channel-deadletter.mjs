@@ -22,7 +22,7 @@ import { dirname, join, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const TRANSCRIPT_DIR = "C:\\Users\\agent\\.claude\\projects\\C--Users-agent-Project-Edgeweaver";
+const TRANSCRIPT_DIR = join((process.env.USERPROFILE || process.env.HOME), ".claude", "projects", join(dirname(fileURLToPath(import.meta.url)), "..", "..").replace(/[^A-Za-z0-9]/g, "-"));
 const MAX_VICTIM_AGE_DAYS = 7;
 const REPLY_TOOL = /plugin_telegram.*(reply|react|send)/i;
 

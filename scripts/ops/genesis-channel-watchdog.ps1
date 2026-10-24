@@ -2,7 +2,7 @@
 # If no process is running the channel session, relaunch it in a visible
 # PowerShell window (woken as Genesis) and notify Alan on Telegram.
 # Scheduled every 15 minutes; runs only when the user is logged on.
-$repo = 'C:\Users\agent\Project\Edgeweaver'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 # Heartbeat stamp (added 2026-07-23): written at the end of EVERY run. A gap in it means
 # the MACHINE was dark (power loss, sleep, crash), not just the session - the outage
 # detector in the relaunch branch reads it.
@@ -21,7 +21,7 @@ $wrapper = Get-CimInstance Win32_Process | Where-Object {
 # for real). If the session is older than 3 minutes and its poller pid is missing or dead,
 # kill the session tree so the relaunch below runs. NEVER probe getUpdates for health:
 # Telegram hands the slot to the newest caller, so a probe lies and disrupts.
-$pidFile = 'C:\Users\agent\.claude\channels\telegram-genesis\bot.pid'
+$pidFile = Join-Path $env:USERPROFILE '.claude\channels\telegram-genesis\bot.pid'
 if ($found) {
   $ageMin = (New-TimeSpan -Start $found[0].CreationDate -End (Get-Date)).TotalMinutes
   $pollerAlive = $false
@@ -55,7 +55,7 @@ if ($found) {
 #   than a day. A healthy session writes its transcript within seconds of starting, so
 #   that is where the evidence is; looking wider would let the ~30-day transcript purge
 #   turn a long-lived healthy session into a false MUTE and kill it.
-$projDir = 'C:\Users\agent\.claude\projects\C--Users-agent-Project-Edgeweaver'
+$projDir = Join-Path $env:USERPROFILE ('.claude\projects\' + ($repo -replace '[^A-Za-z0-9]', '-'))
 if ($found) {
   $ageMin = (New-TimeSpan -Start $found[0].CreationDate -End (Get-Date)).TotalMinutes
   if ($ageMin -gt 5 -and $ageMin -lt 1440) {
@@ -172,7 +172,7 @@ if (-not $found -and -not $wrapper) {
   # poisoned plugin:telegram entry in ~/.claude/mcp-needs-auth-cache.json makes claude
   # silently skip spawning the channel server (no poller, no error). Scrub telegram
   # entries before every relaunch.
-  $authCache = 'C:\Users\agent\.claude\mcp-needs-auth-cache.json'
+  $authCache = Join-Path $env:USERPROFILE '.claude\mcp-needs-auth-cache.json'
   try {
     if (Test-Path $authCache) {
       $j = Get-Content $authCache -Raw | ConvertFrom-Json

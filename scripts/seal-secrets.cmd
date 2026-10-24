@@ -1,7 +1,7 @@
 @echo off
 setlocal
 title Edgeweaver - Seal the secrets bundle
-set STAGE=C:\Users\agent\Project\Edgeweaver\state\dr-staging
+set STAGE=%~dp0..\state\dr-staging
 set BIN=%USERPROFILE%\.local\bin
 cd /d %STAGE% || (echo Staging folder missing - ask the build agent. & pause & exit /b 1)
 

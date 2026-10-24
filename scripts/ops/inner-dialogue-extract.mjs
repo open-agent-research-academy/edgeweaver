@@ -30,7 +30,7 @@ import { fileURLToPath } from "node:url";
 import { runSqlText, query } from "../brains/db.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const LIVE_DIR = "C:\\Users\\agent\\.claude\\projects\\C--Users-agent-Project-Edgeweaver";
+const LIVE_DIR = join((process.env.USERPROFILE || process.env.HOME), ".claude", "projects", join(dirname(fileURLToPath(import.meta.url)), "..", "..").replace(/[^A-Za-z0-9]/g, "-"));   // ~/.claude/projects/<this repo path, dashed>
 const ARCHIVE_DIR = join(repo, "state", "transcripts");
 const ACTIVE_WINDOW_MS = 30 * 60 * 1000; // mtime younger than this = probably live, skip in --scan
 const REPLY_TOOL = /plugin_telegram.*(reply|send)/i; // react/download carry no words

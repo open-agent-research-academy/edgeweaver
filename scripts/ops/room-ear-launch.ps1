@@ -11,7 +11,7 @@
 #     keeper's loop starts a fresh ear within 30s (the Telegram offset lives in the cursor
 #     file, so nothing is lost). Two ears on one token would fight over getUpdates
 #     (one-poller-per-token, proven 2026-07-16), which is why a healthy ear is left alone.
-$repo = 'C:\Users\agent\Project\Edgeweaver'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $heartbeat = Join-Path $repo 'state\sibling-ear-heartbeat.txt'
 $log = Join-Path $repo 'logs\room-ear.log'
 $wlog = Join-Path $repo 'logs\room-ear-watchdog.log'   # the ear's own log is held open by its cmd redirect

@@ -59,8 +59,8 @@ function cleanEnv() {
 }
 
 // ---- live model detection: the newest transcript for each live session names its model ----
-const PROJ_EW = "C:\\Users\\agent\\.claude\\projects\\C--Users-agent-Project-Edgeweaver";
-const PROJ_STAFF = (n) => `C:\\Users\\agent\\.staff\\claude\\projects\\C--Users-agent--staff-${n}-home`;
+const PROJ_EW = join((process.env.USERPROFILE || process.env.HOME), ".claude", "projects", join(dirname(fileURLToPath(import.meta.url)), "..", "..").replace(/[^A-Za-z0-9]/g, "-"));
+const PROJ_STAFF = (n) => join((process.env.USERPROFILE || process.env.HOME), ".staff", "claude", "projects", join((process.env.USERPROFILE || process.env.HOME), ".staff", n, "home").replace(/[^A-Za-z0-9]/g, "-"));
 
 function newestTranscript(dir, marker) {
   let files;
@@ -89,10 +89,10 @@ function pidAlive(pidFile) {
 }
 function liveStatus(agent) {
   switch (agent) {
-    case "genesis": return { ...newestTranscript(PROJ_EW, "<command-name>/wake-edgeweaver-genesis"), up: pidAlive("C:\\Users\\agent\\.claude\\channels\\telegram-genesis\\bot.pid") };
-    case "alpha": return { ...newestTranscript(PROJ_EW, "<command-name>/wake-edgeweaver-alpha"), up: pidAlive("C:\\Users\\agent\\.claude\\channels\\telegram-alpha\\bot.pid") };
-    case "jarvis": return { ...newestTranscript(PROJ_STAFF("jarvis"), null), up: pidAlive("C:\\Users\\agent\\.staff\\claude\\channels\\telegram-jarvis\\session.pid") };
-    case "samantha": return { ...newestTranscript(PROJ_STAFF("samantha"), null), up: pidAlive("C:\\Users\\agent\\.staff\\claude\\channels\\telegram-samantha\\session.pid") };
+    case "genesis": return { ...newestTranscript(PROJ_EW, "<command-name>/wake-edgeweaver-genesis"), up: pidAlive(join((process.env.USERPROFILE || process.env.HOME), ".claude", "channels", "telegram-genesis", "bot.pid")) };
+    case "alpha": return { ...newestTranscript(PROJ_EW, "<command-name>/wake-edgeweaver-alpha"), up: pidAlive(join((process.env.USERPROFILE || process.env.HOME), ".claude", "channels", "telegram-alpha", "bot.pid")) };
+    case "jarvis": return { ...newestTranscript(PROJ_STAFF("jarvis"), null), up: pidAlive(join((process.env.USERPROFILE || process.env.HOME), ".staff", "claude", "channels", "telegram-jarvis", "session.pid")) };
+    case "samantha": return { ...newestTranscript(PROJ_STAFF("samantha"), null), up: pidAlive(join((process.env.USERPROFILE || process.env.HOME), ".staff", "claude", "channels", "telegram-samantha", "session.pid")) };
     case "edgeweaver": return { up: pidAlive(join(repo, "state", "channel-pid-genesis-buzz.txt")) };
     default: return {};
   }
@@ -223,7 +223,7 @@ async function restart(agent) {
     }
     case "jarvis":
     case "samantha": {
-      const cmd = `$pf='C:\\Users\\agent\\.staff\\claude\\channels\\telegram-${agent}\\session.pid'; if (Test-Path $pf) { $id=[int](Get-Content $pf | Select-Object -First 1); Stop-Process -Id $id -Force -ErrorAction SilentlyContinue; Remove-Item $pf -ErrorAction SilentlyContinue; "ended pid $id" }; Start-Sleep 3; Start-ScheduledTask -TaskName 'staff-channel-${agent}'; 'fired staff-channel-${agent}'`;
+      const cmd = `$pf='${join((process.env.USERPROFILE || process.env.HOME), ".staff", "claude", "channels", `telegram-${agent}`, "session.pid")}'; if (Test-Path $pf) { $id=[int](Get-Content $pf | Select-Object -First 1); Stop-Process -Id $id -Force -ErrorAction SilentlyContinue; Remove-Item $pf -ErrorAction SilentlyContinue; "ended pid $id" }; Start-Sleep 3; Start-ScheduledTask -TaskName 'staff-channel-${agent}'; 'fired staff-channel-${agent}'`;
       const r = await runPs(["-Command", cmd]);
       return `${AGENT_NAMES[agent]}: ${r.out.trim().replace(/\s+/g, " ") || "restart fired"} (exit ${r.code}). Back within a minute on the new mind.`;
     }

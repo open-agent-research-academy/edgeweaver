@@ -26,10 +26,10 @@ param(
   [switch]$WhatIf
 )
 
-$repo = 'C:\Users\agent\Project\Edgeweaver'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $name = if ($Being -eq 'alpha') { 'Alpha' } else { 'Genesis' }
 $flag = "$repo\state\channel-fallback-$Being.flag"
-$pidFile = "C:\Users\agent\.claude\channels\telegram-$Being\bot.pid"
+$pidFile = Join-Path $env:USERPROFILE ".claude\channels\telegram-$Being\bot.pid"
 $logFile = "$repo\logs\model-fallback.log"
 
 function Say($msg) {
@@ -112,9 +112,9 @@ try {
 # would be exactly the failure this whole mechanism exists to catch.
 # The expected model is whatever the fleet policy says for this being's channel role
 # (scripts/ops/model-policy.mjs), which is exactly what the launcher just read.
-. 'C:/Users/agent/Project/Edgeweaver/scripts/ops/model-policy.ps1'
+. (Join-Path $PSScriptRoot 'model-policy.ps1')
 $want = Get-FleetModel -Agent $Being -Role channel
-$dir = 'C:\Users\agent\.claude\projects\C--Users-agent-Project-Edgeweaver'
+$dir = Join-Path $env:USERPROFILE ('.claude\projects\' + ($repo -replace '[^A-Za-z0-9]', '-'))
 $since = Get-Date
 $got = $null
 for ($i = 0; $i -lt 30; $i++) {

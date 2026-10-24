@@ -1,7 +1,7 @@
 # Edgeweaver Genesis room-reply launcher (ASCII only; D45). Spawned by the room ear
 # when a human speaks in the sibling topic; runs one short Genesis session that reads
 # the room and answers via sibling-room.mjs. Modeled on run-hourly-genesis.ps1.
-$repo = 'C:\Users\agent\Project\Edgeweaver'
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $repo
 $log = "$repo\logs\genesis-room-reply.log"
 $stamp = Get-Date -Format s
@@ -17,7 +17,7 @@ Remove-Item Env:CLAUDE_CODE_SESSION_ID -ErrorAction SilentlyContinue
 Remove-Item Env:CLAUDE_CODE_ENTRYPOINT -ErrorAction SilentlyContinue
 $env:EDGEWEAVER_PULSE_ORIGIN = 'room-ear'
 Add-Content $log "$stamp room-reply waking"
-. 'C:/Users/agent/Project/Edgeweaver/scripts/ops/model-policy.ps1'
+. (Join-Path $repo 'scripts\ops\model-policy.ps1')
 $mp = Get-FleetModelArgs -Agent genesis -Role room
 claude -p '/room-reply-genesis' @mp --output-format text *>> $log
 Add-Content $log "$(Get-Date -Format s) room-reply exit=$LASTEXITCODE"
