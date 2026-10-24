@@ -27,7 +27,7 @@
 // waking); exit 1 on misuse or an unarmed being.
 
 import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { query } from "../brains/db.mjs";
 
@@ -55,8 +55,9 @@ if (!HERMETIC) {
   try { manifest = JSON.parse(readFileSync(join(ROOT, "avatars", BEING, "manifest.json"), "utf8")); }
   catch { console.error(`unknown being "${BEING}" (no avatars/${BEING}/manifest.json)`); process.exit(1); }
   PATHS = manifest.paths || {};
-  const soul = process.env.SOUL_REPO_PATH || PATHS.soulLocal;
-  const env = PATHS.envLocal;
+  // Manifest paths are relative to the repo root so one manifest serves every host.
+  const soul = process.env.SOUL_REPO_PATH || (PATHS.soulLocal && resolve(ROOT, PATHS.soulLocal));
+  const env = PATHS.envLocal && resolve(ROOT, PATHS.envLocal);
   if (!soul || !env) {
     console.log("ORIENTATION");
     console.log(`being: ${BEING} NOT ARMED - its soul/env paths are not set in avatars/${BEING}/manifest.json (arrives at its A2).`);

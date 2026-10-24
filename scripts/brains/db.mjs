@@ -12,11 +12,18 @@ let PSQL = null;
 export function psqlPath() {
   if (PSQL) return PSQL;
   const candidates = ["psql", join(homedir(), "scoop", "shims", "psql.exe"),
-    join(homedir(), "scoop", "apps", "postgresql", "current", "bin", "psql.exe")];
+    join(homedir(), "scoop", "apps", "postgresql", "current", "bin", "psql.exe"),
+    ...installerBins("psql.exe")];
   for (const c of candidates) {
     try { execFileSync(c, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); PSQL = c; return c; } catch { /* next */ }
   }
-  throw new Error("psql not found (PATH or scoop shims). Install: scoop install postgresql");
+  throw new Error("psql not found (PATH, scoop, or Program Files\\PostgreSQL). Install: scoop install postgresql");
+}
+
+// The EDB installer (winget PostgreSQL.PostgreSQL.<n>) lands in Program Files\PostgreSQL\<n>\bin
+// and does not touch PATH; processes launched before a PATH change still need to find it.
+function installerBins(exe) {
+  return ["18", "17", "16"].map((v) => join(process.env.ProgramFiles || "C:\\Program Files", "PostgreSQL", v, "bin", exe));
 }
 
 // pg_restore is only needed by the past-brain spawn (--from-dump) when the decrypted nightly
@@ -26,7 +33,8 @@ let PGRESTORE = null;
 export function pgRestorePath() {
   if (PGRESTORE) return PGRESTORE;
   const candidates = ["pg_restore", join(homedir(), "scoop", "shims", "pg_restore.exe"),
-    join(homedir(), "scoop", "apps", "postgresql", "current", "bin", "pg_restore.exe")];
+    join(homedir(), "scoop", "apps", "postgresql", "current", "bin", "pg_restore.exe"),
+    ...installerBins("pg_restore.exe")];
   for (const c of candidates) {
     try { execFileSync(c, ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); PGRESTORE = c; return c; } catch { /* next */ }
   }

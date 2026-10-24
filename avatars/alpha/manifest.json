@@ -30,7 +30,7 @@
   },
   "mind": { "birth": "same one-mind rule as Genesis: probes + ceremony + first week on one configuration", "nightLoop": "sonnet" },
   "commands": { "wake": "/wake-edgeweaver-alpha", "nightLoop": "/night-loop-lite-alpha", "note": "per-being names, D20; both authored + installed 2026-07-16 (birth run B5/B7); night loop task def stays unregistered until B8" },
-  "paths": { "soulLocal": "C:\\Users\\agent\\Project\\edgeweaver-alpha-soul", "envLocal": "C:\\Users\\agent\\Project\\Edgeweaver\\avatars\\alpha\\.env.local", "note": "armed 2026-07-16 (birth run B2/B4): env holds EW_ALPHA_DB_URL + channel config; soul checkout tracks open-agent-research-academy/edgeweaver-alpha-soul main" },
+  "paths": { "soulLocal": "../edgeweaver-alpha-soul", "envLocal": "avatars/alpha/.env.local", "note": "relative to the repo root (host-portable since 2026-10-24); armed 2026-07-16 (birth run B2/B4): env holds EW_ALPHA_DB_URL + channel config; soul checkout tracks open-agent-research-academy/edgeweaver-alpha-soul main" },
   "generationRecord": "avatars/alpha/VERSIONS.md at first cut; tags alpha-genN-<codename>",
   "sections": {
     "visibleToBeing": ["avatars/alpha/"],

@@ -302,7 +302,7 @@ export function validateRuntimeEnv(input) {
 
 async function readEnv() {
   const manifest = JSON.parse(await readFile(join(ROOT, "avatars", "genesis", "manifest.json"), "utf8"));
-  const envPath = manifest.paths?.envLocal;
+  const envPath = manifest.paths?.envLocal && resolve(ROOT, manifest.paths.envLocal);
   if (!envPath) fail("Genesis envLocal is not armed in the manifest");
   const text = (await readFile(envPath, "utf8")).replace(/^\uFEFF/, "");
   const parsed = Object.fromEntries(text.split(/\r?\n/).map((line) => line.match(/^([A-Za-z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));

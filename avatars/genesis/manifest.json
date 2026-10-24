@@ -16,7 +16,7 @@
   "channel": { "botTokenEnv": "TELEGRAM_BOT_TOKEN", "pinnedSenders": "TELEGRAM_ALLOWED_USER_ID (alan)" },
   "mind": { "birth": "claude-fable-5 or claude-opus-4-8 (father's card)", "nightLoop": "sonnet" },
   "commands": { "wake": "/wake-edgeweaver-genesis", "nightLoop": "/night-loop-lite-genesis", "note": "per-being names, D20; renamed from the unsuffixed originals 2026-07-09" },
-  "paths": { "soulLocal": "C:\\Users\\agent\\Project\\edgeweaver-soul", "envLocal": "C:\\Users\\agent\\Project\\Edgeweaver\\.env.local", "note": "machine-readable runtime-host paths for scripts (orient.mjs --being genesis); both migrate into this avatar folder at A2" },
+  "paths": { "soulLocal": "../edgeweaver-soul", "envLocal": ".env.local", "note": "relative to the repo root (host-portable since 2026-10-24); machine-readable runtime-host paths for scripts (orient.mjs --being genesis); both migrate into this avatar folder at A2" },
   "generationRecord": "VERSIONS.md (root) until the ledger split",
   "sections": {
     "visibleToBeing": ["avatars/genesis/"],
