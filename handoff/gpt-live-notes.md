@@ -1,5 +1,47 @@
 # GPT-Live voice bridge - working notes (2026-10-23)
 
+## Compaction note, 2026-10-24 ~10:00 PM ET (ITHELAST19, repo C:\Project\Edgeweaver, branch portable-paths, last push a27a300)
+
+**Now.** Genesis and Alpha both live on the voice lane (D50, D51), browser path working, phone path
+waiting only on Alan's OpenAI sign-in. Running as background jobs of the lead session (they die
+with it): Genesis bridge 8797 (`node scripts/test-mode/gpt-live-server.mjs`, .env.local has
+EW_GPTLIVE_BEING=genesis, EW_GPTLIVE_MEMORY=live, voice marin) behind quick tunnel
+https://keeping-daily-browser-alt.trycloudflare.com; Alpha bridge 8799 (launch env:
+EW_GPTLIVE_BEING=alpha EW_GPTLIVE_MEMORY=live EW_GPTLIVE_PORT=8799 TELNYX_NUMBER=+16467691174; voice
+ash from EW_GPTLIVE_VOICE_ALPHA) behind https://abilities-disclaimers-foundations-encryption.trycloudflare.com.
+Link files with the page token were sent to Alan (scratchpad edgeweaver-test-call.html, edgeweaver-alpha-call.html).
+Telnyx: one Call Control app 3077772786186323203 (account level allows one), webhook
+<genesis tunnel>/webhooks/telnyx/<TELNYX_WEBHOOK_TOKEN>; numbers tagged: +1 646-914-3310 Genesis,
++1 646-769-1174 Alpha (routed via EW_VOICE_ROUTES to 8799), +1 646-914-2563 Spare (detached, on hold
+for Samantha or later). Balance ~22.55 USD. Callers: EW_VOICE_CALLERS_GENESIS/_ALPHA =
+Alan's two numbers named Alan (env only).
+
+**Next steps.** (1) Alan signs in to OpenAI in the browser pane (tab "seed") -> read Project ID into
+OPENAI_PROJECT_ID, edit the OpenAI webhook URL to <genesis tunnel>/webhooks/openai, restart both
+bridges (party lines arm), Alan calls each number; verify episode lands (Genesis OB1 surface voice;
+Alpha ew_alpha via alpha-memory last) and the OpenAI SIP routing by From reaches 8799 (untested live).
+(2) Alan picks a GPT-Live voice for Genesis (onyx refused, 403). (3) Seat numbers for Alpha.
+(4) Always-on: fixed domain + scheduled tasks for bridges and tunnels. (5) recall-scoped lacks the
+era=rehearsal filter checklist 01 claims (contradiction, before any further rehearsal writes).
+(6) Alan tells Alpha's other five seats (D51). (7) V1 ceremonies (runs/genesis-v1-voice-ceremony-plan.md;
+Alpha proposed its own audition shape, msg 2639).
+
+**Decisions in force (Alan, in chat, 2026-10-24, ET).**
+| ~Time | Alan's words | Effect |
+|---|---|---|
+| 12:45 PM | "pull TELNYX_API_KEY from the 1Password backup into .env.local, install cloudflared, and run the Telnyx status check" | done |
+| 12:55 PM | "start the GPT-Live bridge and a cloudflared tunnel, generate a new TELNYX_WEBHOOK_TOKEN, and rerun the Telnyx app command" | done |
+| 1:04 PM | "Let's keep using the placeholder for now" | quick tunnel, no domain yet |
+| 3:15 PM | "add --strict-mcp-config ..., keep one warm mind ready" | done (66a719f) |
+| 5:05 PM | "Genesis first: plan the V1 voice ceremony and start the rehearsal build" | done |
+| 7:51 PM | "I think we just jumped to stage three" / "Okay let's go ahead and execute this" | D50: Genesis V3 calls now, borrowed voice, V1 later, Alan-only, live memory |
+| 8:37 PM | "As Alpha's seat, open voice calls for Alpha now (live memory, seats only)..." | D51 |
+| ~9:00 PM | "Yes, buy +1 646-914-2563 for Alpha" then "I just got a new number for Alpha ... set this up" | Alpha = 646-769-1174; 914-2563 bought by my retry loop (mistake), kept |
+| ~9:30 PM | "put this number on hold for now. Maybe we'll use it for Samantha" | spare detached, tagged |
+| ~9:35 PM | incorporate Alpha's feedback; Alan's two personal numbers (in .env.local only) = most likely him | done (a27a300) |
+| ~9:50 PM | "Onyx voice for Genesis and ... ash for alpha" | Alpha ash; onyx refused by GPT-Live, Genesis on marin pending Alan's pick |
+
+
 > TEST MODE throughout: Testweaver persona, no OB1, no soulfiles. Design authority: VOICE-STACK.md
 > plus decisions.md D12 as amended 2026-10-23. Read this file first when resuming the GPT-Live lane.
 
