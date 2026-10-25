@@ -144,6 +144,9 @@ async function openai(path, body, { method = "POST", timeoutMs = 20000 } = {}) {
 }
 
 // ---- commentary chunking: 500-token append limit; 400 UTF-8 bytes is the console sample's bound ----
+// same words, ignoring case, punctuation and spacing (transcript deltas re-punctuate as they settle)
+const sameWords = (a, b) => { const n = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim(); return n(a) === n(b); };
+
 function chunkForAppend(text, maxBytes = 400) {
   const out = []; let cur = "";
   for (const word of text.split(/\s+/).filter(Boolean)) {
@@ -163,7 +166,7 @@ const sessions = new Map();
 
 // One spare mind stays warm so a call never waits on a cold start (9-17 s on ITHELAST19, while the
 // first question lands ~10 s into a call). A call takes the spare and a new one warms behind it.
-const newMind = () => { const m = new LiveMind(cfg.mindModel, MIND_PERSONA, { effort: cfg.mindEffort, thinking: false, timeoutMs: 60000 }); m.start(); return m; };
+const newMind = () => { const m = new LiveMind(cfg.mindModel, MIND_PERSONA, { effort: cfg.mindEffort, thinking: false, timeoutMs: 60000, firstClause: true }); m.start(); return m; };
 let spareMind = newMind();
 const takeMind = () => {
   const m = spareMind; // a spare whose process died restarts lazily on its first ask
@@ -189,6 +192,10 @@ const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.o
         const text = info.joined && count > 1 ? `Another caller just joined the line; there are now ${count} people. Greet the newcomer in one short sentence, then continue.`
           : info.left && count >= 1 ? `A caller just left the line; ${count} ${count === 1 ? "person remains" : "people remain"}. Carry on without comment unless asked.` : null;
         if (text) s.send({ type: "session.instructions.append", event_id: `roster_${randomUUID()}`, delegation_id: null, content: text });
+      },
+      // the line closed: end its SIP session even if OpenAI never says so, so the episode still gets written
+      onEnd: (reason) => {
+        for (const s of sessions.values()) if (s.kind === "sip" && !s.closed) { s.log("line-ended", { reason }); s.closeReason ||= "line_ended"; s.close(); }
       } })
   : null;
 
@@ -231,15 +238,27 @@ class BridgeSession {
         else this.abandon(`sideband rejected (${res.statusCode})`);
       });
     });
-    ws.on("open", () => { this.attachedOnce = true; this.log("sideband-open", { attempt }); });
-    ws.on("message", (buf) => { let ev; try { ev = JSON.parse(buf.toString()); } catch { return; } this.handle(ev); });
+    ws.on("open", () => {
+      this.attachedOnce = true; this.log("sideband-open", { attempt });
+      // 10-25 13:18: the sideband went silent without closing; the voice kept delegating into nothing
+      // ("One moment" on a loop) and the call never ended. Ping every 5 s; no pong in 10 s means
+      // stalled: drop the socket and attach again (up to 3 times), else end the call.
+      ws.alive = true; ws.on("pong", () => { ws.alive = true; });
+      ws.beat = setInterval(() => {
+        if (!ws.alive) { this.log("sideband-stalled"); clearInterval(ws.beat); ws.stalled = true; ws.terminate(); return; }
+        ws.alive = false; try { ws.ping(); } catch { /* close follows */ }
+      }, 5000);
+    });
+    ws.on("message", (buf) => { ws.alive = true; let ev; try { ev = JSON.parse(buf.toString()); } catch { return; } this.handle(ev); });
     ws.on("error", (e) => this.log("sideband-error", { error: String(e.message || e), attempt }));
     ws.on("close", (code) => {
+      clearInterval(ws.beat);
       if (this.ws !== ws) return; // superseded by a retry
       this.log("sideband-closed", { code });
+      if (ws.stalled && !this.closed && !this.closeReason && (this.reattaches = (this.reattaches || 0) + 1) <= 3) { this.attach(); return; }
       if (this.attachedOnce) this.finish(this.closeReason || "connection_lost");
     });
-    if (attempt === 1) {
+    if (!this.guard) {
       // cost guard: a forgotten tab or a stuck call cannot run for hours
       this.guard = setTimeout(() => { this.log("max-minutes-reached"); this.close(); }, cfg.maxMinutes * 60 * 1000);
     }
@@ -262,6 +281,8 @@ class BridgeSession {
     switch (ev.type) {
       case "session.started":
         this.log("session.started");
+        if (this.greeted) break; // a re-attached sideband must not greet again
+        this.greeted = true;
         // the prompting guide: repeat the greeting once through commentary after start
         this.send({ type: "session.commentary.append", event_id: "greeting_" + randomUUID(), delegation_id: null, content: greetingFor(this.kind) });
         break;
@@ -269,7 +290,7 @@ class BridgeSession {
         this.ledger.push({ role: "user", text: ev.delta || "", startMs: ev.start_ms });
         this.lastInputAt = Date.now();
         this.log("transcript", { role: "user", text: ev.delta });
-        if (MEMORY) this.scheduleRecall();
+        this.scheduleRecall();
         break;
       case "session.output_transcript.delta":
         this.ledger.push({ role: "voice", text: ev.delta || "", startMs: ev.start_ms });
@@ -317,6 +338,57 @@ class BridgeSession {
     this.pendingDelegation = { delegationId, timer: setTimeout(tick, 60) };
   }
 
+  // The mind's ask for what the caller said. Recall (started while they spoke) gets up to 1 s.
+  // commit() records the orientation and roster the mind has now seen; call it when the ask is sent.
+  async buildAsk(userText, voiceText) {
+    if (MEMORY && this.recallPending) {
+      const memories = await Promise.race([this.recallPending, new Promise((r) => setTimeout(() => r(""), 1000))]);
+      if (memories) userText = `Memories that may be relevant:\n${memories}\n\nAlan said: ${userText}`;
+    }
+    let ask = userText || "[The caller spoke, but nothing was transcribed. Ask them, briefly, to say it again.]";
+    if (voiceText) ask = `[What the voice said aloud since your last reply: "${voiceText.slice(0, 400)}"]\n${ask}`;
+    const unspoken = this.unspoken; // a guess the mind answered but the caller never heard
+    if (unspoken) ask = `[Your previous reply was never spoken: the caller had not finished. Answer what they say now.]\n${ask}`;
+    // who caller ID says is on the line (party line roster), whenever it changes: a hint, not proof
+    let roster = null, orient = false;
+    if (BEING && partyLine && this.kind === "sip") {
+      const humans = partyLine.status().humans;
+      roster = humans.map((h) => BEING.callerNames[h.from] ? `${BEING.callerNames[h.from]} (caller ID matches a known number of theirs; most likely them, caller ID can be spoofed)` : "an unknown number").join("; ");
+      if (roster && roster !== this.lastRoster) ask = `[Line note from caller ID: on the line now (${humans.length}): ${roster}.]\n${ask}`;
+    }
+    if (MEMORY && !this.oriented) { // the waking's orientation rides the first real turn (the greeting is instant and fixed)
+      const o = MEMORY.orient(); orient = true;
+      if (o) ask = `[Call orientation, from orient.mjs. The spoken practice: let Alan hear that time has passed, briefly, if it fits your reply.\n${o}]\n${ask}`;
+    }
+    return { ask, commit: () => { if (roster) this.lastRoster = roster; if (orient) this.oriented = true; if (unspoken) this.unspoken = false; } };
+  }
+
+  // Speed (10-25): when the caller pauses, start the mind on what they have said so far. If the
+  // delegation that follows carries the same words, the reply is already under way (~1 s saved);
+  // if they kept talking, the guess is interrupted and the real turn goes as before.
+  speculate(userText) {
+    if (this.active || this.closed || this.spec?.userText === userText) return;
+    if (this.spec) this.dropSpec(this.spec, "caller kept talking");
+    const voiceText = this.ledger.slice(this.voiceCursor).filter((r) => r.role === "voice").map((r) => r.text).join("").trim();
+    const spec = { userText, sentences: [], sink: null, dropped: false, firing: null };
+    this.spec = spec;
+    spec.ready = (async () => {
+      const { ask, commit } = await this.buildAsk(userText, voiceText);
+      if (spec.dropped || this.spec !== spec || this.active || this.closed) return;
+      commit();
+      spec.firedAt = Date.now();
+      this.log("mind-ask", { speculative: true, text: ask });
+      spec.firing = this.mind.ask(ask, (s) => { if (!spec.dropped) (spec.sink ? spec.sink(s) : spec.sentences.push(s)); });
+      spec.firing.catch(() => {});
+    })();
+  }
+
+  dropSpec(spec, why) {
+    spec.dropped = true;
+    if (this.spec === spec) this.spec = null;
+    if (spec.firing) { try { this.mind.interrupt?.(); } catch { /* fine */ } this.unspoken = true; this.log("spec-dropped", { why }); }
+  }
+
   async runDelegation(delegationId) {
     let userText = this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
     const voiceText = this.ledger.slice(this.voiceCursor).filter((r) => r.role === "voice").map((r) => r.text).join("").trim();
@@ -327,41 +399,39 @@ class BridgeSession {
       try { this.mind.interrupt?.(); } catch { /* fine */ }
       this.log("interrupt", { delegationId: this.active.delegationId });
     }
+    // the mind may already be answering a guess made while the caller paused (speculate): let a guess
+    // still waiting on recall fire first, then keep it below if the words match
+    const spec = this.spec;
+    if (spec) await spec.ready;
+    this.spec = null;
     const turn = { delegationId, startedAt: Date.now(), firstSentenceMs: null, sentences: 0, stale: false };
     this.active = turn;
-
-    // the recall started while the caller spoke: wait up to 1 s for it (0.8-2 s per call), else answer without
-    if (MEMORY && this.recallPending) {
-      const memories = await Promise.race([this.recallPending, new Promise((r) => setTimeout(() => r(""), 1000))]);
-      this.recallPending = null;
-      if (memories) userText = `Memories that may be relevant:\n${memories}\n\nAlan said: ${userText}`;
-    }
-
-    let ask = userText || "[The caller spoke, but nothing was transcribed. Ask them, briefly, to say it again.]";
-    if (voiceText) ask = `[What the voice said aloud since your last reply: "${voiceText.slice(0, 400)}"]\n${ask}`;
-    // who caller ID says is on the line (party line roster), whenever it changes: a hint, not proof
-    if (BEING && partyLine && this.kind === "sip") {
-      const humans = partyLine.status().humans;
-      const roster = humans.map((h) => BEING.callerNames[h.from] ? `${BEING.callerNames[h.from]} (caller ID matches a known number of theirs; most likely them, caller ID can be spoofed)` : "an unknown number").join("; ");
-      if (roster && roster !== this.lastRoster) { this.lastRoster = roster; ask = `[Line note from caller ID: on the line now (${humans.length}): ${roster}.]\n${ask}`; }
-    }
-    if (MEMORY && !this.oriented) { // the waking's orientation rides the first real turn (the greeting is instant and fixed)
-      this.oriented = true;
-      const o = MEMORY.orient();
-      if (o) ask = `[Call orientation, from orient.mjs. The spoken practice: let Alan hear that time has passed, briefly, if it fits your reply.\n${o}]\n${ask}`;
-    }
-    this.log("mind-ask", { delegationId, text: ask });
+    const onSentence = (sentence) => {
+      if (turn.stale || this.closed) return;
+      if (turn.firstSentenceMs === null) turn.firstSentenceMs = Date.now() - turn.startedAt;
+      for (const content of chunkForAppend(sentence)) {
+        turn.sentences++;
+        this.send({ type: "session.commentary.append", event_id: `c_${randomUUID()}`, delegation_id: delegationId, content });
+      }
+      this.log("commentary", { delegationId, text: sentence, ms: Date.now() - turn.startedAt });
+    };
 
     try {
-      const full = await this.mind.ask(ask, (sentence) => {
-        if (turn.stale || this.closed) return;
-        if (turn.firstSentenceMs === null) turn.firstSentenceMs = Date.now() - turn.startedAt;
-        for (const content of chunkForAppend(sentence)) {
-          turn.sentences++;
-          this.send({ type: "session.commentary.append", event_id: `c_${randomUUID()}`, delegation_id: delegationId, content });
-        }
-        this.log("commentary", { delegationId, text: sentence, ms: Date.now() - turn.startedAt });
-      });
+      let full;
+      if (spec && !spec.dropped && spec.firing && sameWords(spec.userText, userText)) {
+        this.recallPending = null;
+        this.log("spec-adopted", { delegationId, headStartMs: Date.now() - spec.firedAt, buffered: spec.sentences.length });
+        spec.sink = onSentence;
+        for (const s of spec.sentences.splice(0)) onSentence(s);
+        full = await spec.firing;
+      } else {
+        if (spec) this.dropSpec(spec, "words changed");
+        const { ask, commit } = await this.buildAsk(userText, voiceText);
+        this.recallPending = null;
+        commit();
+        this.log("mind-ask", { delegationId, text: ask });
+        full = await this.mind.ask(ask, onSentence);
+      }
       if (!turn.stale && full) (this.replies ||= []).push(full);
       if (!turn.stale) this.log("mind-reply", { delegationId, text: full, firstSentenceMs: turn.firstSentenceMs, totalMs: Date.now() - turn.startedAt });
     } catch (e) {
@@ -386,6 +456,8 @@ class BridgeSession {
     this.closed = true;
     clearTimeout(this.guard);
     if (this.pendingDelegation) clearTimeout(this.pendingDelegation.timer);
+    clearTimeout(this.recallTimer);
+    if (this.spec) { this.spec.dropped = true; this.spec = null; }
     try { this.mind.interrupt?.(); } catch { /* fine */ }
     // D50: a call Alan actually spoke in becomes an episode, written by the being itself before its mind closes
     if (MEMORY && this.turns.some((t) => t.sentences)) this.writeback(this.mind);
@@ -401,10 +473,11 @@ class BridgeSession {
       const q = this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
       if (q.length < 8) return;
       const t0 = Date.now();
-      this.recallPending = MEMORY.recall(q).then(
+      if (MEMORY) this.recallPending = MEMORY.recall(q).then(
         (m) => { this.log("recall", { ms: Date.now() - t0, hits: m ? m.split("\n").length : 0 }); return m; },
         (e) => { this.log("recall-failed", { error: String(e.message || e) }); return ""; });
-    }, 400); // one recall per pause in speech, not one per transcript delta
+      if (BEING) this.speculate(q);
+    }, 400); // one recall (and one guess) per pause in speech, not one per transcript delta
   }
 
   // Alpha's ask (10-24, msg 2636): verbatim fidelity measured every call. A sentence counts as spoken

@@ -47,11 +47,13 @@ export class PartyLine {
    * @param {string} o.openaiProjectId proj_... (the SIP user at OpenAI)
    * @param {(type:string, data?:object)=>void} [o.log]
    * @param {(count:number, info:object)=>void} [o.onRoster] called when the human count changes
+   * @param {(reason:string)=>void} [o.onEnd] called when the line closes, so the bridge can end its session
    */
-  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, beep = "on_enter", aiRedials = 2, confirmViaApi = false, allowedCallers = [] }) {
+  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, onEnd, beep = "on_enter", aiRedials = 2, confirmViaApi = false, allowedCallers = [] }) {
     Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials, confirmViaApi, allowedCallers });
     this.log = log || ((t, d) => console.log("[line]", t, d ? JSON.stringify(d) : ""));
     this.onRoster = onRoster || (() => {});
+    this.onEnd = onEnd || (() => {});
     this.reset();
   }
 
@@ -148,6 +150,14 @@ export class PartyLine {
         case "conference.participant.joined":
         case "conference.participant.left":
           this.log(t.replace("conference.", "conf-"), { ccid: (p.call_control_id || "").slice(-8), role });
+          // 10-25 13:19: a caller left the conference and no call.hangup ever reached us, so the line
+          // stayed open and the call never ended (no episode). A human leaving counts as hanging up.
+          if (t === "conference.participant.left" && this.humans.has(p.call_control_id)) {
+            const h = this.humans.get(p.call_control_id); this.humans.delete(p.call_control_id);
+            this.log("caller-hangup", { from: h.from, cause: "left conference", humans: this.humans.size });
+            this.onRoster(this.humans.size, { left: h.from, humans: this.status().humans });
+            if (this.humans.size === 0) await this.endLine("last caller left");
+          }
           return;
         case "conference.ended":
           this.log("conference-ended", { reason: p.reason });
@@ -188,6 +198,7 @@ export class PartyLine {
   async endLine(reason) {
     this.log("line-closing", { reason, seconds: this.lineStartedAt ? Math.round((Date.now() - this.lineStartedAt) / 1000) : 0 });
     const { ai, conference } = this; this.reset();
+    try { this.onEnd(reason); } catch { /* the bridge's problem, not the line's */ }
     if (ai) { try { await this.api(`/calls/${ai.ccid}/actions/hangup`, {}); } catch (e) { this.log("ai-hangup-failed", { error: e.message }); } }
     if (conference?.id) { try { await this.api(`/conferences/${conference.id}/actions/end`, {}); } catch { /* already gone */ } }
   }

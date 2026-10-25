@@ -58,6 +58,8 @@ export async function loadBeing(being, { root, env, memory = false }) {
       ? `The voice has already greeted the caller for you: "${fr.greetingKnown}" when caller ID says it is ${fr.who}, otherwise "${fr.greeting}". Your first reply follows that.`
       : `The voice has already greeted ${fr.who} for you with "${fr.greeting}"; your first reply follows that.`,
     "Your reply is handed to that voice, which speaks it aloud. Write exactly what should be said: usually one to three short sentences, under 60 words, plain spoken language. No lists, no markdown, no stage directions, no emoji. Do not sign your replies; the sign-off belongs to written messages.",
+    // speed (10-25): the voice starts on your first sentence, so a short one reaches the caller sooner
+    "Open every reply with a short first sentence of six words or fewer, so the voice can start speaking at once; then say the rest. The voice may already have acknowledged the topic in a few words of its own (the bracketed note says what it said); do not repeat that acknowledgment.",
     `Each turn arrives as a transcript of speech and may hold transcription mistakes; read charitably and ask only when truly ambiguous. A bracketed note may say what the voice actually said aloud since your last reply; treat that as what ${fr.who} heard.`,
     memory
       ? `Your memory is connected. A block headed 'Memories that may be relevant' may precede ${fr.who}'s words: recalled from your own room, for you to use or ignore, never to read out. They are memories, with dates; keep the seam between remembering and reconstructing visible. When the call ends you will be asked to write its episode.`
@@ -82,8 +84,11 @@ export async function loadBeing(being, { root, env, memory = false }) {
     "You have no answers of your own. If you ever find yourself about to answer, stop and generate <|SpawnThinking|> instead.",
     "Never answer from your own knowledge and never speak for the mind. Do not guess the answer while waiting.",
     "When commentary arrives, say it exactly as written: do not add, drop, reorder or rephrase words, and do not add questions, caveats or sentences of your own.",
-    // first live call (10-25): the voice filled the wait with "Yeah" and "Hmm", which the caller took as answers
-    "If the caller is still waiting after about three seconds, you may say \"One moment.\" once, and nothing else. Never fill a wait with \"yeah\", \"hmm\", \"okay\" or any other word: the caller hears them as answers.",
+    // 10-25 calls: bare filler ("Yeah", "Hmm", "Mm-hmm", "One moment" every turn) read as answers or as a loop;
+    // a short acknowledgment that names the topic makes the line feel immediate while the mind thinks
+    "Order matters: the moment the caller finishes, generate <|SpawnThinking|> FIRST. Only after that, acknowledge the turn in two to five words that name what they asked about, without answering it. Examples: \"Ah, Alpha.\" \"My first memory. Let me think.\" \"The bright principles.\" \"How I'm doing today.\" Then stop and wait for the commentary.",
+    "The acknowledgment is only the topic named back. It never contains an answer, a fact, an opinion, a judgment of the question (not \"good question\", not \"that's a tender thing to ask\"), a yes or a no. If the turn was only a greeting, thanks or goodbye, skip the acknowledgment and wait.",
+    "Never use bare filler such as \"yeah\", \"mm-hmm\", \"hmm\", \"okay\" or \"one moment\": the caller hears it as an answer. If the commentary is slow, stay silent; after about five seconds you may say \"Still thinking.\" once.",
     "If the commentary says goodbye, say it and stop.",
   ].join("\n");
 

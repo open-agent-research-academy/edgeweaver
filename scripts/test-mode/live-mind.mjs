@@ -107,7 +107,14 @@ export class LiveMind {
         while ((m = cur.pending.match(/^(.*?[.!?])(\s+|$)/s))) {
           const sentence = m[1].trim();
           cur.pending = cur.pending.slice(m[0].length);
-          if (sentence && !cur.warmup && !cur.interrupted) cur.onSentence(sentence);
+          if (sentence && !cur.warmup && !cur.interrupted) { cur.emitted = true; cur.onSentence(sentence); }
+        }
+        // firstClause (voice, 10-25): a turn's opening can go at its first comma, a few hundred ms
+        // before the sentence ends; later chunks stay whole sentences so the voice's phrasing holds
+        if (this.opts.firstClause && !cur.emitted && (m = cur.pending.match(/^(.{12,}?[,;:—])\s/s))) {
+          const clause = m[1].trim();
+          cur.pending = cur.pending.slice(m[0].length);
+          if (!cur.warmup && !cur.interrupted) { cur.emitted = true; cur.onSentence(clause); }
         }
       } else if (e.type === "result") {
         const failed = e.is_error || (e.subtype && e.subtype !== "success");
