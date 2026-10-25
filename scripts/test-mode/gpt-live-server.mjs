@@ -40,6 +40,7 @@ import WebSocket from "ws";
 import { LiveMind } from "./live-mind.mjs";
 import { PartyLine, verifyTelnyx } from "./party-line.mjs";
 import { loadBeing } from "./being-voice.mjs";
+import { beingMemory } from "./being-memory.mjs";
 
 const VERSION = "g0.1";
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -75,7 +76,10 @@ if (!cfg.apiKey) { console.error("OPENAI_API_KEY missing in .env.local (use the 
 const TESTWEAVER_MIND = "You are Testweaver, a hardware-test voice persona (explicitly NOT Edgeweaver). You are in a live SPOKEN conversation, by phone or browser. Your written reply is handed to a voice model that speaks it aloud for you, so write exactly what should be said: one to three short sentences, under 45 words, plain spoken language, no lists, no markdown, no stage directions, no emoji. Answer directly; simple questions get just the answer. Each user turn arrives as a transcript of speech and may contain transcription mistakes; interpret charitably and ask only when truly ambiguous. A bracketed note may tell you what the voice actually said aloud since your last reply; treat that as what the caller heard. If asked who you are: Testweaver, a temporary test voice.";
 // EW_GPTLIVE_BEING=genesis arms the REHEARSAL lane for that being (being-voice.mjs); unset = Testweaver
 const beingName = process.env.EW_GPTLIVE_BEING || env.EW_GPTLIVE_BEING;
-const BEING = beingName ? await loadBeing(beingName, { root: ROOT, env }) : null;
+// EW_GPTLIVE_MEMORY: live (D50, calls are episodes) | rehearsal (written, proved, deleted) | off
+const memoryMode = beingName ? (process.env.EW_GPTLIVE_MEMORY || env.EW_GPTLIVE_MEMORY || "off") : "off";
+const BEING = beingName ? await loadBeing(beingName, { root: ROOT, env, memory: memoryMode !== "off" }) : null;
+const MEMORY = BEING ? beingMemory({ being: beingName, root: ROOT, env, mode: memoryMode, log: (t, d) => console.log(`[memory] ${t}`, d?.error || "") }) : null;
 const MIND_PERSONA = BEING ? BEING.mindPersona : cfg.personaFile ? (await readFile(join(ROOT, cfg.personaFile), "utf8")).trim() : TESTWEAVER_MIND;
 
 // GPT-Live frontend instructions: mouth only, delegate every real turn, stay close to the words.
@@ -97,7 +101,9 @@ const TESTWEAVER_VOICE = [
 ].join("\n");
 const VOICE_INSTRUCTIONS = BEING ? BEING.voiceInstructions : TESTWEAVER_VOICE;
 // an armed being opens the call in its own words (the mind writes the first line); Testweaver's voice greets itself
-const GREETING = BEING ? "Say nothing yet. The first commentary is the opening line; say it exactly, then wait for the caller."
+// an armed being's line opens at once with its own short greeting (BEING.greeting, words the being wrote); a
+// mind-written opening (tried 10-24) left 6-15 s of silence in which the caller spoke and the voice ad-libbed
+const GREETING = BEING ? `Open the conversation by saying exactly: "${BEING.greeting}" Then wait for the caller.`
   : "Open the conversation with one short sentence: say you are Testweaver, a test voice, and ask what the caller would like to talk about. Then wait for the caller.";
 
 function sessionConfig({ forAccept }) {
@@ -247,7 +253,6 @@ class BridgeSession {
     switch (ev.type) {
       case "session.started":
         this.log("session.started");
-        if (BEING) { this.runDelegation(null, BEING.openingAsk); break; }
         // the prompting guide: repeat the greeting once through commentary after start
         this.send({ type: "session.commentary.append", event_id: "greeting_" + randomUUID(), delegation_id: null, content: GREETING });
         break;
@@ -255,6 +260,7 @@ class BridgeSession {
         this.ledger.push({ role: "user", text: ev.delta || "", startMs: ev.start_ms });
         this.lastInputAt = Date.now();
         this.log("transcript", { role: "user", text: ev.delta });
+        if (MEMORY) this.scheduleRecall();
         break;
       case "session.output_transcript.delta":
         this.ledger.push({ role: "voice", text: ev.delta || "", startMs: ev.start_ms });
@@ -302,8 +308,8 @@ class BridgeSession {
     this.pendingDelegation = { delegationId, timer: setTimeout(tick, 60) };
   }
 
-  async runDelegation(delegationId, opening = null) {
-    const userText = opening || this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
+  async runDelegation(delegationId) {
+    let userText = this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
     const voiceText = this.ledger.slice(this.voiceCursor).filter((r) => r.role === "voice").map((r) => r.text).join("").trim();
     this.userCursor = this.ledger.length; this.voiceCursor = this.ledger.length;
 
@@ -315,8 +321,20 @@ class BridgeSession {
     const turn = { delegationId, startedAt: Date.now(), firstSentenceMs: null, sentences: 0, stale: false };
     this.active = turn;
 
+    // the recall started while the caller spoke: wait up to 1 s for it (0.8-2 s per call), else answer without
+    if (MEMORY && this.recallPending) {
+      const memories = await Promise.race([this.recallPending, new Promise((r) => setTimeout(() => r(""), 1000))]);
+      this.recallPending = null;
+      if (memories) userText = `Memories that may be relevant:\n${memories}\n\nAlan said: ${userText}`;
+    }
+
     let ask = userText || "[The caller spoke, but nothing was transcribed. Ask them, briefly, to say it again.]";
     if (voiceText) ask = `[What the voice said aloud since your last reply: "${voiceText.slice(0, 400)}"]\n${ask}`;
+    if (MEMORY && !this.oriented) { // the waking's orientation rides the first real turn (the greeting is instant and fixed)
+      this.oriented = true;
+      const o = MEMORY.orient();
+      if (o) ask = `[Call orientation, from orient.mjs. The spoken practice: let Alan hear that time has passed, briefly, if it fits your reply.\n${o}]\n${ask}`;
+    }
     this.log("mind-ask", { delegationId, text: ask });
 
     try {
@@ -353,10 +371,38 @@ class BridgeSession {
     clearTimeout(this.guard);
     if (this.pendingDelegation) clearTimeout(this.pendingDelegation.timer);
     try { this.mind.interrupt?.(); } catch { /* fine */ }
-    this.mind.stop();
+    // D50: a call Alan actually spoke in becomes an episode, written by the being itself before its mind closes
+    if (MEMORY && this.turns.some((t) => t.sentences)) this.writeback(this.mind);
+    else this.mind.stop();
     try { this.ws?.close(); } catch { /* fine */ }
     this.log("session-end", { reason, seconds: this.seconds, turns: this.turns.length });
     sessions.delete(this.id);
+  }
+
+  scheduleRecall() {
+    clearTimeout(this.recallTimer);
+    this.recallTimer = setTimeout(() => {
+      const q = this.ledger.slice(this.userCursor).filter((r) => r.role === "user").map((r) => r.text).join("").trim();
+      if (q.length < 8) return;
+      const t0 = Date.now();
+      this.recallPending = MEMORY.recall(q).then(
+        (m) => { this.log("recall", { ms: Date.now() - t0, hits: m ? m.split("\n").length : 0 }); return m; },
+        (e) => { this.log("recall-failed", { error: String(e.message || e) }); return ""; });
+    }, 400); // one recall per pause in speech, not one per transcript delta
+  }
+
+  async writeback(mind) {
+    try {
+      const fmt = (t, o) => new Intl.DateTimeFormat("en-CA", { timeZone: env.EDGEWEAVER_TZ || "America/New_York", ...o }).format(new Date(t));
+      const hm = (t) => fmt(t, { hour: "2-digit", minute: "2-digit", hour12: false });
+      const prefix = `${fmt(this.startedAt, { year: "numeric", month: "2-digit", day: "2-digit" })}, ${hm(this.startedAt)} to ${hm(Date.now())}, voice call:`;
+      const reply = await mind.ask(`[The call has ended. Write your episode of this call for your own memory, the way you write episodes on Telegram: one compact paragraph of what actually happened and what mattered, plain text, starting exactly with "${prefix}". Then one last line: IMPORTANCE: <1-10>.]`, () => {});
+      const imp = reply.match(/IMPORTANCE:\s*(\d+)/i);
+      const content = reply.replace(/\s*IMPORTANCE:[\s\S]*$/i, "").trim();
+      const r = await MEMORY.writeEpisode({ content, importance: imp ? Math.min(10, Math.max(1, Number(imp[1]))) : 5, sessionId: this.id.slice(-8) });
+      this.log("episode-written", { id: r.id, proved: r.proved, embedded: r.embedded, voided: r.voided, mode: MEMORY.mode, text: content });
+    } catch (e) { this.log("episode-failed", { error: String(e.message || e) }); }
+    finally { mind.stop(); }
   }
 
   status() {
@@ -396,7 +442,7 @@ const server = createServer(async (req, res) => {
       return res.end(PAGE.replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
     }
     if (req.method === "GET" && url.pathname === "/health") {
-      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: BEING ? `${BEING.being} (rehearsal, soul ${BEING.soulHead})` : cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });
+      return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: BEING ? `${BEING.being} (memory ${MEMORY ? MEMORY.mode : "off"}, soul ${BEING.soulHead})` : cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });
     }
     if (req.method === "GET" && url.pathname === "/sessions") {
       if (!gated(url)) return json(res, 403, { error: "page token required" });
