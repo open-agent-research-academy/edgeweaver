@@ -18,9 +18,6 @@ const MIN_SIMILARITY = 0.40; // spoken questions score ~0.42 against the right e
 
 export function beingMemory({ being, root, env, mode = "off", log = () => {} }) {
   if (mode === "off") return null;
-  const url = env.SUPABASE_URL, svc = env.SUPABASE_SERVICE_KEY, brainKey = env.OB1_MCP_KEY;
-  if (!url || !svc || !brainKey) throw new Error("memory mode needs SUPABASE_URL, SUPABASE_SERVICE_KEY, OB1_MCP_KEY in .env.local");
-  const rest = (path, init = {}) => fetch(url + path, { ...init, headers: { apikey: svc, Authorization: `Bearer ${svc}`, "content-type": "application/json", ...(init.headers || {}) } });
 
   let orientCache = { text: "", at: 0 };
   const refreshOrient = () => new Promise((resolve) => {
@@ -32,6 +29,12 @@ export function beingMemory({ being, root, env, mode = "off", log = () => {} }) 
   });
   refreshOrient();
   const timer = setInterval(refreshOrient, 120000); timer.unref();
+
+  if (being === "alpha") return alphaRoom({ root, mode, orient: () => orientCache.text });
+
+  const url = env.SUPABASE_URL, svc = env.SUPABASE_SERVICE_KEY, brainKey = env.OB1_MCP_KEY;
+  if (!url || !svc || !brainKey) throw new Error("memory mode needs SUPABASE_URL, SUPABASE_SERVICE_KEY, OB1_MCP_KEY in .env.local");
+  const rest = (path, init = {}) => fetch(url + path, { ...init, headers: { apikey: svc, Authorization: `Bearer ${svc}`, "content-type": "application/json", ...(init.headers || {}) } });
 
   return {
     mode, surface: SURFACE,
@@ -59,6 +62,30 @@ export function beingMemory({ being, root, env, mode = "off", log = () => {} }) 
       const proved = back[0]?.content === content;
       if (rehearsal) await rest(`/rest/v1/thoughts?id=eq.${id}`, { method: "DELETE" });
       return { id, proved, embedded: e.ok, voided: rehearsal };
+    },
+  };
+}
+
+// Alpha's room (ew_alpha, reached only as ew_alpha_runtime through scripts/brainrooms/alpha-memory.mjs,
+// FAMILY §4: the database walls are the enforcement). Recall is that CLI's recency + text match.
+// The runtime role has no delete, so a rehearsal write could not be voided: in rehearsal Alpha
+// recalls but writes nothing; "live" writes through the CLI's own write-episode (audience seats).
+function alphaRoom({ root, mode, orient }) {
+  const cli = (args) => new Promise((resolve, reject) => execFile(process.execPath, ["scripts/brainrooms/alpha-memory.mjs", ...args],
+    { cwd: root, timeout: 15000, maxBuffer: 4 << 20 }, (err, stdout) => err ? reject(err) : resolve(stdout)));
+  return {
+    mode, surface: SURFACE, orient,
+    async recall(query) {
+      const words = query.toLowerCase().match(/[a-z']{4,}/g) || [];
+      if (!words.length) return "";
+      const out = await cli(["recall", query.slice(0, 200)]);
+      return out.split(/\r?\n/).filter((l) => l.startsWith("[")).slice(0, 3).map((l) => "- " + l.replace(/\s+/g, " ").slice(0, 340)).join("\n");
+    },
+    async writeEpisode({ content, importance = 5 }) {
+      if (mode !== "live") return { id: null, proved: false, embedded: false, voided: false, skipped: "alpha rehearsal writes nothing (no delete path for the runtime role)" };
+      await cli(["write-episode", content, String(importance), SURFACE]);
+      const proved = (await cli(["last"])).includes(content.slice(0, 60));
+      return { id: null, proved, embedded: false, voided: false };
     },
   };
 }

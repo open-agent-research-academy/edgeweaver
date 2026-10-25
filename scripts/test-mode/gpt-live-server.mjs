@@ -54,7 +54,7 @@ const env = Object.fromEntries((await readFile(join(ROOT, ".env.local"), "utf8")
 const cfg = {
   apiKey: env.OPENAI_API_KEY || "",
   webhookSecret: env.OPENAI_WEBHOOK_SECRET || "",
-  voice: env.EW_GPTLIVE_VOICE || "marin",
+  voice: process.env.EW_GPTLIVE_VOICE || env.EW_GPTLIVE_VOICE || "marin", // per instance: no being speaks with another's voice
   mindModel: env.EW_GPTLIVE_MODEL || "claude-opus-5-5",
   mindEffort: env.EW_GPTLIVE_EFFORT || "low",
   port: Number(process.env.EW_GPTLIVE_PORT || env.EW_GPTLIVE_PORT || 8797), // process env wins: a second, untunnelled instance
@@ -401,7 +401,7 @@ class BridgeSession {
       const imp = reply.match(/IMPORTANCE:\s*(\d+)/i);
       const content = reply.replace(/\s*IMPORTANCE:[\s\S]*$/i, "").trim();
       const r = await MEMORY.writeEpisode({ content, importance: imp ? Math.min(10, Math.max(1, Number(imp[1]))) : 5, sessionId: this.id.slice(-8) });
-      this.log("episode-written", { id: r.id, proved: r.proved, embedded: r.embedded, voided: r.voided, mode: MEMORY.mode, text: content });
+      this.log("episode-written", { id: r.id, proved: r.proved, embedded: r.embedded, voided: r.voided, skipped: r.skipped, mode: MEMORY.mode, text: content });
     } catch (e) { this.log("episode-failed", { error: String(e.message || e) }); }
     finally { mind.stop(); }
   }
