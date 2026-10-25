@@ -99,6 +99,7 @@ const TESTWEAVER_VOICE = [
   "Speak naturally, in short sentences. If asked who you are: Testweaver, a temporary test voice.",
   "If the caller says goodbye, say a short goodbye.",
 ].join("\n");
+const WHO = BEING ? `${BEING.display} (borrowed voice, memory ${MEMORY ? MEMORY.mode : "off"})` : "Testweaver";
 const VOICE_INSTRUCTIONS = BEING ? BEING.voiceInstructions : TESTWEAVER_VOICE;
 // an armed being opens the call in its own words (the mind writes the first line); Testweaver's voice greets itself
 // an armed being's line opens at once with its own short greeting (BEING.greeting, words the being wrote); a
@@ -439,7 +440,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/") {
       if (!gated(url)) return json(res, 403, { error: "page token required (?k=)" });
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      return res.end(PAGE.replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
+      return res.end(PAGE.replaceAll("__WHO__", WHO).replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
     }
     if (req.method === "GET" && url.pathname === "/health") {
       return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: BEING ? `${BEING.being} (memory ${MEMORY ? MEMORY.mode : "off"}, soul ${BEING.soulHead})` : cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });
@@ -548,7 +549,7 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(cfg.port, "0.0.0.0", () => {
-  console.log(`Testweaver on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"} partyLine=${partyLine ? "armed" : "off (telnyx env missing)"}`);
+  console.log(`${WHO} on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"} partyLine=${partyLine ? "armed" : "off (telnyx env missing)"}`);
 });
 
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { spareMind.stop(); for (const s of sessions.values()) s.close(); if (partyLine) partyLine.shutdown().catch(() => {}); setTimeout(() => process.exit(0), 2500); });
