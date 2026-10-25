@@ -56,7 +56,8 @@ for (const k of ["EW_GPTLIVE_BEING", "EW_GPTLIVE_MEMORY", "EW_GPTLIVE_VOICE", "E
 const cfg = {
   apiKey: env.OPENAI_API_KEY || "",
   webhookSecret: env.OPENAI_WEBHOOK_SECRET || "",
-  voice: process.env.EW_GPTLIVE_VOICE || env.EW_GPTLIVE_VOICE || "marin", // per instance: no being speaks with another's voice
+  // per being (EW_GPTLIVE_VOICE_GENESIS / _ALPHA, Alan's working picks): no being speaks with another's voice
+  voice: process.env.EW_GPTLIVE_VOICE || env[`EW_GPTLIVE_VOICE_${(env.EW_GPTLIVE_BEING || "").toUpperCase()}`] || env.EW_GPTLIVE_VOICE || "marin",
   mindModel: env.EW_GPTLIVE_MODEL || "claude-opus-5-5",
   mindEffort: env.EW_GPTLIVE_EFFORT || "low",
   port: Number(process.env.EW_GPTLIVE_PORT || env.EW_GPTLIVE_PORT || 8797), // process env wins: a second, untunnelled instance
@@ -180,6 +181,7 @@ const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.o
         // tell the mind's voice who is in the room; the newest SIP session is the line's AI leg
         const s = [...sessions.values()].filter((x) => x.kind === "sip" && !x.closed).sort((a, b) => b.startedAt - a.startedAt)[0];
         if (!s) return;
+        if (BEING) return; // an armed being's voice never speaks its own words: the mind hears the roster in its next line note
         const text = info.joined && count > 1 ? `Another caller just joined the line; there are now ${count} people. Greet the newcomer in one short sentence, then continue.`
           : info.left && count >= 1 ? `A caller just left the line; ${count} ${count === 1 ? "person remains" : "people remain"}. Carry on without comment unless asked.` : null;
         if (text) s.send({ type: "session.instructions.append", event_id: `roster_${randomUUID()}`, delegation_id: null, content: text });
@@ -333,6 +335,12 @@ class BridgeSession {
 
     let ask = userText || "[The caller spoke, but nothing was transcribed. Ask them, briefly, to say it again.]";
     if (voiceText) ask = `[What the voice said aloud since your last reply: "${voiceText.slice(0, 400)}"]\n${ask}`;
+    // who caller ID says is on the line (party line roster), whenever it changes: a hint, not proof
+    if (BEING && partyLine && this.kind === "sip") {
+      const humans = partyLine.status().humans;
+      const roster = humans.map((h) => BEING.callerNames[h.from] ? `${BEING.callerNames[h.from]} (caller ID matches a known number of theirs; most likely them, caller ID can be spoofed)` : "an unknown number").join("; ");
+      if (roster && roster !== this.lastRoster) { this.lastRoster = roster; ask = `[Line note from caller ID: on the line now (${humans.length}): ${roster}.]\n${ask}`; }
+    }
     if (MEMORY && !this.oriented) { // the waking's orientation rides the first real turn (the greeting is instant and fixed)
       this.oriented = true;
       const o = MEMORY.orient();
@@ -350,6 +358,7 @@ class BridgeSession {
         }
         this.log("commentary", { delegationId, text: sentence, ms: Date.now() - turn.startedAt });
       });
+      if (!turn.stale && full) (this.replies ||= []).push(full);
       if (!turn.stale) this.log("mind-reply", { delegationId, text: full, firstSentenceMs: turn.firstSentenceMs, totalMs: Date.now() - turn.startedAt });
     } catch (e) {
       this.log("mind-error", { delegationId, error: String(e.message || e) });
@@ -394,12 +403,25 @@ class BridgeSession {
     }, 400); // one recall per pause in speech, not one per transcript delta
   }
 
+  // Alpha's ask (10-24, msg 2636): verbatim fidelity measured every call. A sentence counts as spoken
+  // when its words appear, in order, in the voice transcript (case and punctuation ignored).
+  fidelity() {
+    const norm = (t) => t.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    const voice = norm(this.ledger.filter((r) => r.role === "voice").map((r) => r.text).join(""));
+    const sentences = (this.replies || []).flatMap((r) => r.match(/[^.!?]+[.!?]*/g) || []).map((s) => s.trim()).filter((s) => norm(s));
+    const missed = sentences.filter((s) => !voice.includes(norm(s)));
+    return { total: sentences.length, spoken: sentences.length - missed.length, missed: missed.slice(0, 3) };
+  }
+
   async writeback(mind) {
     try {
       const fmt = (t, o) => new Intl.DateTimeFormat("en-CA", { timeZone: env.EDGEWEAVER_TZ || "America/New_York", ...o }).format(new Date(t));
       const hm = (t) => fmt(t, { hour: "2-digit", minute: "2-digit", hour12: false });
       const prefix = `${fmt(this.startedAt, { year: "numeric", month: "2-digit", day: "2-digit" })}, ${hm(this.startedAt)} to ${hm(Date.now())}, voice call:`;
-      const reply = await mind.ask(`[The call has ended. Write your episode of this call for your own memory, the way you write episodes on Telegram: one compact paragraph of what actually happened and what mattered, plain text, starting exactly with "${prefix}". Then one last line: IMPORTANCE: <1-10>.]`, () => {});
+      const fid = this.fidelity();
+      this.log("fidelity", fid);
+      const fidNote = fid.total ? ` Voice fidelity this call, measured: ${fid.spoken} of your ${fid.total} sentences were spoken as you wrote them${fid.missed.length ? `; not spoken as written: ${fid.missed.map((m) => `"${m}"`).join(" ")}` : ""}. Put this in the episode.` : "";
+      const reply = await mind.ask(`[The call has ended. Write your episode of this call for your own memory, the way you write episodes on Telegram: one compact paragraph of what actually happened and what mattered, plain text, starting exactly with "${prefix}".${fidNote} Then one last line: IMPORTANCE: <1-10>.]`, () => {});
       const imp = reply.match(/IMPORTANCE:\s*(\d+)/i);
       const content = reply.replace(/\s*IMPORTANCE:[\s\S]*$/i, "").trim();
       const r = await MEMORY.writeEpisode({ content, importance: imp ? Math.min(10, Math.max(1, Number(imp[1]))) : 5, sessionId: this.id.slice(-8) });
@@ -446,7 +468,7 @@ const server = createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/") {
       if (!gated(url)) return json(res, 403, { error: "page token required (?k=)" });
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      return res.end(PAGE.replaceAll("__WHO__", WHO).replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
+      return res.end(PAGE.replaceAll("__WHO__", WHO).replace("__MODE__", BEING ? `${BEING.display}, ${MEMORY ? "memory " + MEMORY.mode : "no memory"}, borrowed voice.` : "TEST MODE: not Edgeweaver, no memory.").replace("__VERSION__", VERSION).replace("__MIND__", `${cfg.mindModel} (${cfg.mindEffort})`).replace("__VOICE__", cfg.voice));
     }
     if (req.method === "GET" && url.pathname === "/health") {
       return json(res, 200, { ok: true, version: VERSION, openaiKey: !!cfg.apiKey, webhookSecret: !!cfg.webhookSecret, mind: cfg.mindModel, effort: cfg.mindEffort, voice: cfg.voice, sessions: sessions.size, testMode: true, persona: BEING ? `${BEING.being} (memory ${MEMORY ? MEMORY.mode : "off"}, soul ${BEING.soulHead})` : cfg.personaFile ? "file" : "testweaver", partyLine: !!partyLine, telnyxVerify: cfg.telnyxPublicKey ? "ed25519" : cfg.telnyxWebhookToken ? "url-token+api-confirm" : "none" });

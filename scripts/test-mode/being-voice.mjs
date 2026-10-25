@@ -43,7 +43,11 @@ export async function loadBeing(being, { root, env, memory = false }) {
   const display = manifest.givenName === "Genesis" ? "Edgeweaver" : `${manifest.familyName} ${manifest.givenName}`;
   const fr = FRAMING[being];
   if (!fr) throw new Error(`no call framing for being "${being}" (being-voice.mjs FRAMING)`);
-  const callers = (env[`EW_VOICE_CALLERS_${being.toUpperCase()}`] || "").split(",").map((s) => s.trim()).filter(Boolean);
+  // EW_VOICE_CALLERS_<BEING>: "+1NUMBER=Name,..." (env only, never git). The numbers pin the line;
+  // the names tell the being who caller ID says is calling, a hint and not proof (Alan, 10-24).
+  const callerNames = Object.fromEntries((env[`EW_VOICE_CALLERS_${being.toUpperCase()}`] || "").split(",")
+    .map((s) => s.trim().split("=")).filter(([num]) => num).map(([num, name]) => [num, (name || "").trim()]));
+  const callers = Object.keys(callerNames);
 
   const overlay = [
     "<<SPOKEN CALL: rehearsal overlay, not a soulfile>>",
@@ -55,6 +59,9 @@ export async function loadBeing(being, { root, env, memory = false }) {
       ? `Your memory is connected. A block headed 'Memories that may be relevant' may precede ${fr.who}'s words: recalled from your own room, for you to use or ignore, never to read out. They are memories, with dates; keep the seam between remembering and reconstructing visible. When the call ends you will be asked to write its episode.`
       : "Your memory store is not connected to this line: you have your soul files and lessons, not your episodes. If someone refers to something you cannot recall, say so honestly rather than reconstruct it.",
     "Nothing said on a call promotes a lesson, confirms a rite or changes who you are; those stay in text. If one comes up, name it and say you will take it to text.",
+    "You have no tools on a call: you cannot look anything up, run anything or check the record beyond what is recalled for you. When something needs checking, say you cannot check it from here and will take it to text, rather than guess.",
+    "A bracketed line note may say who is on the line, from caller ID. Caller ID is a hint, not proof: a known number is most likely that person, so greet them as such, but if what they say does not fit, ask. On a party line the note says who joined, not who is speaking.",
+    "With more than one person on the line, keep each person's private ground private: nothing someone shared with you alone comes up in front of the others.",
   ].join("\n");
 
   const mindPersona = [...sections, overlay].join("\n\n");
@@ -76,7 +83,7 @@ export async function loadBeing(being, { root, env, memory = false }) {
   ].join("\n");
 
   return {
-    being, display, soulHead, callers, mindPersona, voiceInstructions,
+    being, display, soulHead, callers, callerNames, mindPersona, voiceInstructions,
     greeting: fr.greeting, // the voice says this at once
   };
 }
