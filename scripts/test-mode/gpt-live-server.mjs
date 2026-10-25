@@ -436,7 +436,7 @@ const readBody = (req) => new Promise((res, rej) => { let b = ""; req.on("data",
 const json = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
 // EW_VOICE_ROUTES: other beings' lines served by sibling bridges, "+1NUMBER=http://127.0.0.1:PORT,..."
 const voiceRoutes = () => (env.EW_VOICE_ROUTES || "").split(",").map((r) => r.trim().split("="))
-  .filter(([num, to]) => num && to).map(([num, to]) => [num, to.replace(/\/$/, "")]);
+  .filter(([num, to]) => num && to && num !== cfg.telnyxNumber).map(([num, to]) => [num, to.replace(/\/$/, "")]); // never route our own number
 const pick = (h, keys) => Object.fromEntries(keys.filter((k) => h[k]).map((k) => [k, h[k]]));
 const gated = (url) => !cfg.pageToken || url.searchParams.get("k") === cfg.pageToken;
 

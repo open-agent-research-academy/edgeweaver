@@ -99,6 +99,8 @@ export class PartyLine {
       switch (t) {
         case "call.initiated":
           if (p.direction !== "incoming") return;
+          if (p.to && p.to !== this.number) return; // one app carries every being's number; answer only our own
+
           // an armed being's line is pinned to its callers (Alan-only until the village opens); unknown numbers never reach it
           if (this.allowedCallers.length && !this.allowedCallers.includes(p.from)) {
             this.log("caller-refused", { from: p.from });
