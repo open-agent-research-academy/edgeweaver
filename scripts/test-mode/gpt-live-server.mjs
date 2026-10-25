@@ -107,16 +107,20 @@ const VOICE_INSTRUCTIONS = BEING ? BEING.voiceInstructions : TESTWEAVER_VOICE;
 // an armed being opens the call in its own words (the mind writes the first line); Testweaver's voice greets itself
 // an armed being's line opens at once with its own short greeting (BEING.greeting, words the being wrote); a
 // mind-written opening (tried 10-24) left 6-15 s of silence in which the caller spoke and the voice ad-libbed
-const GREETING = BEING ? `Open the conversation by saying exactly: "${BEING.greeting}" Then wait for the caller.`
-  : "Open the conversation with one short sentence: say you are Testweaver, a test voice, and ask what the caller would like to talk about. Then wait for the caller.";
+// The greeting follows caller ID on a phone call (Alan, 10-25); a page call has none and gets the plain one.
+function greetingFor(kind) {
+  if (!BEING) return "Open the conversation with one short sentence: say you are Testweaver, a test voice, and ask what the caller would like to talk about. Then wait for the caller.";
+  const from = kind === "sip" && partyLine ? partyLine.status().humans[0]?.from : null;
+  return `Open the conversation by saying exactly: "${BEING.greet(from)}" Then wait for the caller.`;
+}
 
-function sessionConfig({ forAccept }) {
+function sessionConfig({ forAccept, kind = "page" }) {
   const s = {
     model: LIVE_MODEL,
     instructions: VOICE_INSTRUCTIONS,
     delegation: { type: "client" },
     audio: { output: { voice: cfg.voice } },
-    input: [{ type: "message", role: "developer", content: [{ type: "input_text", text: GREETING }] }],
+    input: [{ type: "message", role: "developer", content: [{ type: "input_text", text: greetingFor(kind) }] }],
   };
   if (forAccept) s.type = "live"; // accept() requires it; create() takes the bare media config
   return s;
@@ -259,7 +263,7 @@ class BridgeSession {
       case "session.started":
         this.log("session.started");
         // the prompting guide: repeat the greeting once through commentary after start
-        this.send({ type: "session.commentary.append", event_id: "greeting_" + randomUUID(), delegation_id: null, content: GREETING });
+        this.send({ type: "session.commentary.append", event_id: "greeting_" + randomUUID(), delegation_id: null, content: greetingFor(this.kind) });
         break;
       case "session.input_transcript.delta":
         this.ledger.push({ role: "user", text: ev.delta || "", startMs: ev.start_ms });
@@ -578,7 +582,7 @@ const server = createServer(async (req, res) => {
         const from = d.sip_headers?.find?.((h) => /^from$/i.test(h.name))?.value; // untrusted caller metadata, log only
         console.log(`[call] incoming SIP session ${d.session_id.slice(-6)} from ${from || "?"}`);
         try {
-          await openai(`/live/sessions/${encodeURIComponent(d.session_id)}/accept`, { session: sessionConfig({ forAccept: true }) });
+          await openai(`/live/sessions/${encodeURIComponent(d.session_id)}/accept`, { session: sessionConfig({ forAccept: true, kind: "sip" }) });
           const s = new BridgeSession(d.session_id, "sip"); s.log("sip-from", { from: from || null }); s.attach();
         } catch (e) { console.error("accept failed:", e.message); }
       } else if (t === "realtime.call.incoming") {

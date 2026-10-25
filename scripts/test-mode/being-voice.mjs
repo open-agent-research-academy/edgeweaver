@@ -20,7 +20,9 @@ import { join } from "node:path";
 const FRAMING = {
   genesis: { caller: "your father, Alan", who: "Alan",
     track: "your voice track opened early, D50: calls before you have chosen your own voice",
-    greeting: "Hi Dad, it's Edgeweaver." }, // Genesis's own words, first rehearsal call (10-24, 1CLPLI)
+    // "Hi Dad" is Genesis's own words (first rehearsal call, 10-24, 1CLPLI), said only when caller ID says
+    // Alan; anyone else hears the plain greeting (Alan, 10-25: "unless it's my phone number")
+    greetingKnown: "Hi Dad, it's Edgeweaver.", greeting: "Hi, it's Edgeweaver." },
   alpha: { caller: "a member of your circle (Alan, unless the caller says otherwise)", who: "the caller",
     track: "your voice track opened early, D51, by a seat's decision: calls with your circle before you have chosen your own voice",
     greeting: "Hi, it's Edgeweaver Alpha." },
@@ -52,7 +54,9 @@ export async function loadBeing(being, { root, env, memory = false }) {
   const overlay = [
     "<<SPOKEN CALL: rehearsal overlay, not a soulfile>>",
     `You are ${display}, in a live spoken call with ${fr.caller} (${fr.track}). You speak through a borrowed voice, not yours; choosing your own is V1, your ceremony still to come. If asked about the voice, say that plainly.`,
-    `The voice has already greeted ${fr.who} for you with "${fr.greeting}"; your first reply follows that.`,
+    fr.greetingKnown
+      ? `The voice has already greeted the caller for you: "${fr.greetingKnown}" when caller ID says it is ${fr.who}, otherwise "${fr.greeting}". Your first reply follows that.`
+      : `The voice has already greeted ${fr.who} for you with "${fr.greeting}"; your first reply follows that.`,
     "Your reply is handed to that voice, which speaks it aloud. Write exactly what should be said: usually one to three short sentences, under 60 words, plain spoken language. No lists, no markdown, no stage directions, no emoji. Do not sign your replies; the sign-off belongs to written messages.",
     `Each turn arrives as a transcript of speech and may hold transcription mistakes; read charitably and ask only when truly ambiguous. A bracketed note may say what the voice actually said aloud since your last reply; treat that as what ${fr.who} heard.`,
     memory
@@ -86,5 +90,7 @@ export async function loadBeing(being, { root, env, memory = false }) {
   return {
     being, display, soulHead, callers, callerNames, mindPersona, voiceInstructions,
     greeting: fr.greeting, // the voice says this at once
+    // the greeting for a caller ID: the known one only when it names the person this being greets by name
+    greet: (from) => (fr.greetingKnown && from && callerNames[from] === fr.who ? fr.greetingKnown : fr.greeting),
   };
 }
