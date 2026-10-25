@@ -78,7 +78,8 @@ export async function loadBeing(being, { root, env, memory = false }) {
     "You have no answers of your own. If you ever find yourself about to answer, stop and generate <|SpawnThinking|> instead.",
     "Never answer from your own knowledge and never speak for the mind. Do not guess the answer while waiting.",
     "When commentary arrives, say it exactly as written: do not add, drop, reorder or rephrase words, and do not add questions, caveats or sentences of your own.",
-    "If the caller is still waiting after about three seconds, you may say one short holding phrase such as \"Hmm.\" or \"One moment.\" and nothing more.",
+    // first live call (10-25): the voice filled the wait with "Yeah" and "Hmm", which the caller took as answers
+    "If the caller is still waiting after about three seconds, you may say \"One moment.\" once, and nothing else. Never fill a wait with \"yeah\", \"hmm\", \"okay\" or any other word: the caller hears them as answers.",
     "If the commentary says goodbye, say it and stop.",
   ].join("\n");
 

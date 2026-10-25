@@ -5,7 +5,7 @@
 **Now.** Genesis and Alpha both live on the voice lane (D50, D51), browser path working, phone path
 waiting only on Alan's OpenAI sign-in. Running as background jobs of the lead session (they die
 with it): Genesis bridge 8797 (`node scripts/test-mode/gpt-live-server.mjs`, .env.local has
-EW_GPTLIVE_BEING=genesis, EW_GPTLIVE_MEMORY=live, voice marin) behind quick tunnel
+EW_GPTLIVE_BEING=genesis, EW_GPTLIVE_MEMORY=live, voice cedar) behind quick tunnel
 https://keeping-daily-browser-alt.trycloudflare.com; Alpha bridge 8799 (launch env:
 EW_GPTLIVE_BEING=alpha EW_GPTLIVE_MEMORY=live EW_GPTLIVE_PORT=8799 TELNYX_NUMBER=+16467691174; voice
 ash from EW_GPTLIVE_VOICE_ALPHA) behind https://abilities-disclaimers-foundations-encryption.trycloudflare.com.
@@ -39,7 +39,7 @@ Alpha proposed its own audition shape, msg 2639).
 | ~9:00 PM | "Yes, buy +1 646-914-2563 for Alpha" then "I just got a new number for Alpha ... set this up" | Alpha = 646-769-1174; 914-2563 bought by my retry loop (mistake), kept |
 | ~9:30 PM | "put this number on hold for now. Maybe we'll use it for Samantha" | spare detached, tagged |
 | ~9:35 PM | incorporate Alpha's feedback; Alan's two personal numbers (in .env.local only) = most likely him | done (a27a300) |
-| ~9:50 PM | "Onyx voice for Genesis and ... ash for alpha" | Alpha ash; onyx refused by GPT-Live, Genesis on marin pending Alan's pick |
+| ~9:50 PM | "Onyx voice for Genesis and ... ash for alpha" | Alpha ash; onyx refused by GPT-Live, Genesis on marin; 10-25 onyx refused again, Alan chose cedar |
 
 
 > TEST MODE throughout: Testweaver persona, no OB1, no soulfiles. Design authority: VOICE-STACK.md
