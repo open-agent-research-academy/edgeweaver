@@ -31,7 +31,7 @@ const env = Object.fromEntries((await readFile(join(ROOT, ".env.local"), "utf8")
   .split(/\r?\n/).map((l) => l.match(/^([A-Za-z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
 const KEY = env.TELNYX_API_KEY;
 const PROJECT = env.OPENAI_PROJECT_ID || "";
-const APP_NAME = env.EW_TELNYX_APP_NAME || "Edgeweaver GPT-Live line";
+const APP_NAME = process.env.EW_TELNYX_APP_NAME || env.EW_TELNYX_APP_NAME || "Edgeweaver GPT-Live line"; // one app per being line (Alpha: "Edgeweaver Alpha line")
 const CONN_NAME = env.EW_TELNYX_CONNECTION_NAME || "Edgeweaver GPT-Live";
 const PROFILE_NAME = "Edgeweaver GPT-Live outbound";
 const OPENAI_FQDN = "sip.api.openai.com", OPENAI_PORT = 5061;

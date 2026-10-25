@@ -51,6 +51,8 @@ const LIVE_MODEL = "gpt-live-1";
 // ---- env (CRLF-safe; the 09-xx bells lesson) ----
 const env = Object.fromEntries((await readFile(join(ROOT, ".env.local"), "utf8"))
   .split(/\r?\n/).map((l) => l.match(/^([A-Za-z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
+// a second instance serves another being from the same .env.local: these few keys may come from the process env
+for (const k of ["EW_GPTLIVE_BEING", "EW_GPTLIVE_MEMORY", "EW_GPTLIVE_VOICE", "EW_GPTLIVE_PORT", "TELNYX_APP_ID", "TELNYX_NUMBER", "EW_VOICE_ROUTES"]) if (process.env[k]) env[k] = process.env[k];
 const cfg = {
   apiKey: env.OPENAI_API_KEY || "",
   webhookSecret: env.OPENAI_WEBHOOK_SECRET || "",
@@ -432,6 +434,10 @@ const PAGE = await readFile(join(HERE, "gpt-live-page.html"), "utf8");
 const ttsCache = new Map(); // test speech, per question
 const readBody = (req) => new Promise((res, rej) => { let b = ""; req.on("data", (c) => { b += c; if (b.length > 2e6) req.destroy(); }); req.on("end", () => res(b)); req.on("error", rej); });
 const json = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
+// EW_VOICE_ROUTES: other beings' lines served by sibling bridges, "+1NUMBER=http://127.0.0.1:PORT,..."
+const voiceRoutes = () => (env.EW_VOICE_ROUTES || "").split(",").map((r) => r.trim().split("="))
+  .filter(([num, to]) => num && to).map(([num, to]) => [num, to.replace(/\/$/, "")]);
+const pick = (h, keys) => Object.fromEntries(keys.filter((k) => h[k]).map((k) => [k, h[k]]));
 const gated = (url) => !cfg.pageToken || url.searchParams.get("k") === cfg.pageToken;
 
 const server = createServer(async (req, res) => {
@@ -506,7 +512,6 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname.startsWith("/webhooks/telnyx")) {
       const raw = await readBody(req);
-      if (!partyLine) return json(res, 503, { error: "party line not configured (TELNYX_API_KEY, TELNYX_APP_ID, TELNYX_NUMBER, OPENAI_PROJECT_ID)" });
       // authenticity: Ed25519 signature when the account has a public key; otherwise the secret URL
       // token (and the party line confirms each call event against the Telnyx API before acting)
       let authentic = false;
@@ -515,6 +520,16 @@ const server = createServer(async (req, res) => {
       else { console.error("telnyx webhook received but neither TELNYX_PUBLIC_KEY nor TELNYX_WEBHOOK_TOKEN is set; refusing"); return json(res, 503, { error: "telnyx webhook verification not configured" }); }
       if (!authentic) return json(res, 404, { error: "not found" });
       let ev; try { ev = JSON.parse(raw); } catch { return json(res, 400, { error: "bad json" }); }
+      // The account level allows ONE Call Control app, so every being's number sits on it and its
+      // webhooks land here: a call to or from another being's number goes to that being's bridge;
+      // conference events carry no number, so every bridge sees them and each acts only on its own.
+      const tev = ev.data || ev; const p = tev.payload || {};
+      const fwd = (to) => fetch(to + url.pathname, { method: "POST", headers: { "content-type": "application/json", ...pick(req.headers, ["telnyx-signature-ed25519", "telnyx-timestamp"]) }, body: raw })
+        .catch((e) => console.error(`telnyx route to ${to} failed:`, e.message));
+      const routed = voiceRoutes().find(([num]) => p.to === num || p.from === num);
+      if (routed) { json(res, 200, { ok: true, routed: true }); fwd(routed[1]); return; }
+      if (String(tev.event_type || "").startsWith("conference.")) for (const [, to] of voiceRoutes()) fwd(to);
+      if (!partyLine) return json(res, 503, { error: "party line not configured (TELNYX_API_KEY, TELNYX_APP_ID, TELNYX_NUMBER, OPENAI_PROJECT_ID, callers)" });
       json(res, 200, { ok: true }); // answer fast; Telnyx retries slow endpoints
       partyLine.handle(ev.data || ev).catch((e) => lineLog("line-error", { error: String(e.message || e) }));
       return;
@@ -526,6 +541,16 @@ const server = createServer(async (req, res) => {
       let ev; try { ev = JSON.parse(raw); } catch { return json(res, 400, { error: "bad json" }); }
       json(res, 200, { ok: true }); // answer fast; OpenAI retries anything slow
       const t = ev.type; const d = ev.data || {};
+      // One OpenAI project webhook serves every line: a SIP leg dialled from another being's number
+      // (its party line's From) goes to that being's bridge (EW_VOICE_ROUTES "+1...=http://127.0.0.1:8799,..."),
+      // which verifies the same signature itself. Each child only ever answers on its own line.
+      const fromHdr = d.sip_headers?.find?.((h) => /^from$/i.test(h.name))?.value || "";
+      const route = voiceRoutes().find(([num]) => fromHdr.includes(num.replace(/^\+/, "")));
+      if (route) {
+        try { await fetch(route[1] + "/webhooks/openai", { method: "POST", headers: { "content-type": "application/json", "webhook-id": req.headers["webhook-id"] || "", "webhook-timestamp": req.headers["webhook-timestamp"] || "", "webhook-signature": req.headers["webhook-signature"] || "" }, body: raw }); console.log(`[call] routed ${t} for ${route[0]} to ${route[1]}`); }
+        catch (e) { console.error(`route to ${route[1]} failed:`, e.message); }
+        return;
+      }
       if ((t === "live.transport.incoming" || t === "live.call.incoming") && (d.type === "sip" || !d.type) && d.session_id) {
         if (sessions.has(d.session_id)) return;
         const from = d.sip_headers?.find?.((h) => /^from$/i.test(h.name))?.value; // untrusted caller metadata, log only

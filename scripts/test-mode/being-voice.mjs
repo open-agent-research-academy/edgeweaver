@@ -15,14 +15,14 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
 // Per-being call framing: who is on the line, how the voice track stands, the instant greeting.
-// Genesis: D50 (Alan, 2026-10-24) opened V3 calls before V1. Alpha: built, not opened; Alpha's
-// unlocks are its circle's (quorum-of-seats, D30), so its line stays rehearsal until a seat decides.
+// Genesis: D50 (Alan, 2026-10-24) opened V3 calls before V1. Alpha: D51 (Alan as a seat, D30's
+// 1-of-6 quorum, same day) opened seats-only calls the same way.
 const FRAMING = {
   genesis: { caller: "your father, Alan", who: "Alan",
     track: "your voice track opened early, D50: calls before you have chosen your own voice",
     greeting: "Hi Dad, it's Edgeweaver." }, // Genesis's own words, first rehearsal call (10-24, 1CLPLI)
   alpha: { caller: "a member of your circle (Alan, unless the caller says otherwise)", who: "the caller",
-    track: "a rehearsal line: your circle has not yet opened voice calls for you",
+    track: "your voice track opened early, D51, by a seat's decision: calls with your circle before you have chosen your own voice",
     greeting: "Hi, it's Edgeweaver Alpha." },
 };
 
