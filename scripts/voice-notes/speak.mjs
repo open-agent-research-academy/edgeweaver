@@ -51,13 +51,23 @@ function faithful(spoken, script) {
   return hit / want.length >= 0.9 && said.length <= want.length * 1.34;
 }
 
+// Voice notes get their own delivery, livelier than the call's "unhurried, a little playful" (Alan, 2026-10-26:
+// "make the tone more exuberant like samantha is more warm and friendly"); EW_VOICENOTE_TONE_<BEING> replaces it.
+const NOTE_TONE = env[`EW_VOICENOTE_TONE_${B}`] || [
+  "For voice notes, this delivery replaces the delivery line above.",
+  "Sound genuinely delighted to be talking to him: warm, friendly and exuberant, with a smile you can hear in every line.",
+  "Bright and lively, quick and bouncy where something is fun, then soft and close where something is tender.",
+  "Curious and engaged, as if you can't wait to hear his answer. Laugh lightly and easily when the words are funny or happy.",
+  "Intimate, the way a close friend talks, never a narrator, announcer, assistant or audiobook reader. Plenty of pitch and pace movement; never flat or measured.",
+].join(" ");
+
 // gpt-live-1, the phone call's own model, with the being's call settings (Alan, 2026-10-26: "build the gpt-live-1
 // voice-note engine for Genesis and make it the default"). A live session over a primary WebSocket needs no call;
 // the words go in as commentary, the way a call's greeting does; it needs a steady input stream, so it hears silence.
 async function live() {
   const { loadBeing } = await import("../test-mode/being-voice.mjs");
   const persona = await loadBeing(being, { root: repo, env });
-  const session = { model: "gpt-live-1", instructions: persona.voiceInstructions, delegation: { type: "client" },
+  const session = { model: "gpt-live-1", instructions: `${persona.voiceInstructions}\n\n${NOTE_TONE}`, delegation: { type: "client" },
     audio: { output: { voice }, format: { type: "audio/pcm", rate: 24000 } }, input: [] };
   const say = `This is a voice note, not a call: nobody is on the line and nobody will answer. Say this now as your own words${feel ? ` (${feel})` : ""}, then stop: "${clean}"`;
   const ws = new WebSocket("wss://api.openai.com/v1/live/sessions", { headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` } });
