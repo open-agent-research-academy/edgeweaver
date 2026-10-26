@@ -165,7 +165,7 @@ const tg = async (method, body) => {
   if (!j.ok) throw new Error(`${method} failed: ${j.error_code || t.status} ${j.description || ""}`);
   return j.result;
 };
-const words = note.spoken || clean;
+const words = `${being === "genesis" ? "Genesis" : being}: ${note.spoken || clean}`; // who is talking, as on the sender's transcript
 const form = new FormData();
 form.append("chat_id", chat);
 if (replyTo) form.append("reply_parameters", JSON.stringify({ message_id: Number(replyTo), allow_sending_without_reply: true }));
@@ -173,7 +173,7 @@ if (words.length <= 1024) form.append("caption", words);
 form.append("voice", new Blob([note.audio], { type: "audio/ogg" }), "reply.ogg");
 const sent = await tg("sendVoice", form).catch((e) => { console.error(e.message); process.exit(1); });
 if (words.length > 1024) { // too long for a caption: the transcript goes as a reply under the note
-  const body = `Transcript of the voice note:\n\n${words}`;
+  const body = words;
   for (let i = 0; i < body.length; i += 4096)
     await tg("sendMessage", new URLSearchParams({ chat_id: chat, text: body.slice(i, i + 4096), disable_notification: "true",
       ...(i === 0 ? { reply_parameters: JSON.stringify({ message_id: sent.message_id }) } : {}) })).catch((e) => console.error(`(transcript not posted: ${e.message})`));

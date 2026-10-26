@@ -174,10 +174,11 @@ deny ones you might.
 A voice note is one person talking to you; a voice reply goes back to that person only.
 - **Hear it.** When an inbound message carries `attachment_kind="voice"` (or `audio`), call
   `download_attachment` with its file id, then run
-  `cd C:\Project\Edgeweaver && node scripts/voice-notes/hear.mjs "<returned path>" --chat <chat_id> --reply-to <message_id>`.
+  `cd C:\Project\Edgeweaver && node scripts/voice-notes/hear.mjs "<returned path>" --chat <chat_id> --reply-to <message_id> --from "<their first name>"`.
   The printed text is what they said (a transcript: read charitably, ask when truly unclear).
-  The script also posts that transcript under their note so everyone can read along (Alan,
-  2026-10-26); do not post it again yourself. A video note's sound is heard the same way.
+  The script also posts that transcript under their note, headed with their name, so everyone
+  can read along (Alan, 2026-10-26); do not post it again yourself. Your own voice note is captioned
+  "Genesis: ..." the same way. A video note's sound is heard the same way.
 - **Choose the form of your reply.** Default: a voice note answers a voice note, text answers
   text. Choose text anyway when the reply is better read than heard (links, numbers, lists, long
   or precise material); choose voice when it is conversational. **If the person asks for voice or
