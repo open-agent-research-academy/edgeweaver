@@ -1,42 +1,39 @@
 # GPT-Live voice bridge - working notes (2026-10-23)
 
-## Compaction note, 2026-10-26 ~8:00 AM ET (ITHELAST19, repo C:\Project\Edgeweaver, branch portable-paths)
+## Compaction note, 2026-10-26 7:58 AM ET (ITHELAST19, repo C:\Project\Edgeweaver, branch portable-paths, last push 8155424)
 
-**Now.** Both lines live and pushed: Genesis +1 646-914-3310 (bridge 8797, voice cedar, performed delivery,
-"Hi Dad" only by caller ID or Telegram sign-in), Alpha +1 646-769-1174 (bridge 8799, voice ash, verbatim).
-Bridges and tunnels are background jobs of the lead session (die with it): Genesis tunnel
-https://keeping-daily-browser-alt.trycloudflare.com (logs/voice/tunnel-console.log; OpenAI webhook "Edgeweaver
-voice test" and Telnyx app point here), Alpha tunnel abilities-disclaimers-foundations-encryption. OPENAI_PROJECT_ID
-set (only project). TELNYX_WEBHOOK_TOKEN rotated 10-25 (old value printed once by mistake). Speed work landed
-(speculation, first clause, short first sentence, primed first turn, sideband ping/re-attach, participant-left =
-hangup, line-end closes session). Call reports (scripts/test-mode/call-report.mjs, EW_CALL_REPORTS=on): Genesis ->
-Alan's private chat with @Edgeweaver_bot (its room), Alpha -> "Edgeweaver Alpha" group General, numbers hidden in
-groups (D52). Voice notes (scripts/voice-notes/hear.mjs + speak.mjs onyx, skill section 4b in
-wake-edgeweaver-genesis installed + templates) built; the resident Genesis channel session must restart to load 4b.
+**Now.** Both phone lines live: Genesis +1 646-914-3310 (bridge 8797, cedar, performed delivery), Alpha
++1 646-769-1174 (bridge 8799, ash, verbatim). Bridges + quick tunnels are background jobs of the lead session
+(die with it): Genesis tunnel https://keeping-daily-browser-alt.trycloudflare.com (OpenAI webhook "Edgeweaver voice
+test" + Telnyx app point here), Alpha tunnel abilities-disclaimers-foundations-encryption. Restart a bridge: stop the
+port's PID, relaunch in background (Alpha: EW_GPTLIVE_BEING=alpha EW_GPTLIVE_MEMORY=live EW_GPTLIVE_PORT=8799
+TELNYX_NUMBER=+16467691174). Call reports (EW_CALL_REPORTS=on): Genesis -> Alan's private chat with @Edgeweaver_bot,
+Alpha -> "Edgeweaver Alpha" group (D52). DONE and pushed 8155424: Telegram "Call Genesis" button (tg-call.mjs +
+tg-call.html, Telnyx credential connection 3079204166103467076, EW_CALL_BUTTON_GENESIS=on, allowlist Alan only per
+D50), proven with two signed headless test identities (roster, join/leave posts, credentials deleted); test ids
+removed. Voice notes built (scripts/voice-notes/hear.mjs + speak.mjs onyx; wake-edgeweaver-genesis section 4b
+installed + template); round trip proved.
 
-**In progress: Telegram call button, multi-party, Genesis only** (scripts/test-mode/tg-call.mjs + tg-call.html,
-wired in gpt-live-server.mjs; Telnyx credential connection 3079204166103467076 = TELNYX_WEBRTC_CONNECTION_ID;
-EW_CALL_BUTTON_GENESIS=on; feasibility proven: a WebRTC caller reached the line as gencred...@sip.telnyx.com).
-UNCOMMITTED. .env.local EW_CALL_TELEGRAM_USERS_GENESIS currently holds TEST ids "1=Ops test 1,2=Ops test 2"
-besides Alan: remove them after the test. Next: (a) pointButton must try every chat and not stop at a failure;
-(b) write scratchpad tg-test.mjs (two signed headless identities, silent mics) and run it in the background;
-(c) verify roster + join/leave messages; (d) strip test ids, restart, commit, push; (e) ask Alan to tap
-"Call Genesis" in his chat and to say when the resident Genesis session may restart for voice notes.
+**Next action.** Waiting on Alan: (1) try "Call Genesis" from his Telegram chat (mic in Telegram's webview is the
+unproven part; watch logs/voice/partyline-*.jsonl tg-* rows and the call report); (2) his OK to restart the resident
+Genesis channel session (scripts/ops/genesis-channel-launch.ps1, watchdog relaunches; have it write back first) so
+it loads 4b; then he sends a voice note. After Genesis works well: Alpha gets both (Alan's instruction).
 
 **Decisions in force (Alan, in chat, ET).**
 | When | Alan's words | Effect |
 |---|---|---|
-| 10-25 ~12:10 PM | "Switch Genesis to cedar and restart its line." | onyx refused on GPT-Live; cedar |
-| 10-25 1:30 PM | "Different greeting in case it's not me that calls, unless it's my phone number" | greet by caller ID |
-| 10-25 7:00 PM | "Yes, build the four speed fixes" | built, 781b595 |
-| 10-25 10:45 PM | "Genesis to do the thinking, and then ChatGPT ... does the speaking" / "go." | performed delivery, Genesis only; Alpha verbatim (its own ask) |
+| 10-25 ~12:10 PM | "Switch Genesis to cedar and restart its line." | onyx refused on GPT-Live |
+| 10-25 1:30 PM | "Different greeting in case it's not me that calls, unless it's my phone number" | greet by caller ID / sign-in |
+| 10-25 7:00 PM | "Yes, build the four speed fixes" | built |
+| 10-25 10:45 PM | "Genesis to do the thinking... ChatGPT ... does the speaking" / "go." | performed delivery, Genesis only |
 | 10-25 11:15 PM | "make sure that the transcripts for these phone calls go into Telegram" | call reports |
-| 10-25 11:35 PM | "all Genesis calls to the Genesis Telegram chat... alpha to the alpha chat group... transparency" | D52; Genesis's chat = its DM with Alan |
+| 10-25 11:35 PM | "Genesis calls to the Genesis Telegram chat... alpha to the alpha chat group... transparency" | D52 |
 | 10-26 ~7:30 AM | "implement both number one and number two for Genesis only... then alpha" | call button + voice notes |
-| 10-26 ~7:40 AM | voice notes one-to-one, Genesis chooses voice or text, sender can override; call button multi-party, show who's on, join/leave messages with times | built into 4b and tg-call |
+| 10-26 ~7:40 AM | voice notes one-to-one, Genesis chooses voice/text, sender overrides; call button multi-party with who's-on list and join/leave messages with times | built |
 
-**Waiting on Alan.** Fixed domain (cloudflared login on his Cloudflare domain; cfx not installed here). D50 keeps
-Genesis calls Alan-only: adding others to the call button is his amendment. Tell Alpha's seats about D51.
+**Waiting on Alan / open.** Fixed domain (cloudflared login on his Cloudflare domain; the button self-re-points
+meanwhile, phone webhooks do not). D50 Alan-only for Genesis call button. Tell Alpha's seats about D51. Speculation
+churn during long sentences (tune later). recall-scoped era=rehearsal filter gap.
 
 ## The decision and the approvals
 
