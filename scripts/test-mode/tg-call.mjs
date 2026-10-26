@@ -159,6 +159,11 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
         json(res, 200, { token: String(token).trim(), number, name: w.name });
         return true;
       }
+      if (req.method === "POST" && url.pathname === "/api/tg/event") { // the page's own steps and errors
+        log("tg-client", { name: w.name, step: String(body.step || "").slice(0, 40), detail: String(body.detail || "").slice(0, 300), ua: String(req.headers["user-agent"] || "").slice(0, 120) });
+        json(res, 200, { ok: true });
+        return true;
+      }
       if (req.method === "POST" && url.pathname === "/api/tg/roster") {
         const s = lineStatus();
         json(res, 200, { me: w.name, live: !!s.ai?.answered, people: s.humans.map((h) => ({ ...nameOf(h.from), since: h.since })) });

@@ -41,6 +41,8 @@ const post = (path, body = {}) => fetch(path, { method: "POST", headers: { "cont
   .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.status); return j; });
 const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 let client = null, call = null;
+// each step and error goes back to the bridge log (tg-client rows), so a failure inside Telegram is visible
+const report = (step, detail) => post("/api/tg/event", { step, detail: String(detail ?? "").slice(0, 300) }).catch(() => {});
 
 async function roster() {
   try {
@@ -61,19 +63,23 @@ $("go").onclick = async () => {
   try {
     await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop())); // ask for the microphone up front
     const j = await post("/api/tg/join");
+    report("token", "ok");
     client = new TelnyxRTC({ login_token: j.token });
     client.remoteElement = "remote";
-    client.on("telnyx.ready", () => { call = client.newCall({ destinationNumber: j.number, audio: true, video: false, remoteElement: "remote" }); });
-    client.on("telnyx.error", (e) => { if (!client || call) return; say("Couldn't connect. Try again."); hangup(); }); // after leaving, a late error is not news
+    const stall = setTimeout(() => { if (!call) { report("stall", "no telnyx.ready after 15 s"); say("Couldn't reach the phone service. Try again."); hangup(); } }, 15000);
+    client.on("telnyx.ready", () => { clearTimeout(stall); report("ready"); call = client.newCall({ destinationNumber: j.number, audio: true, video: false, remoteElement: "remote" }); });
+    client.on("telnyx.error", (e) => { report("error", e?.error?.message || e?.message || JSON.stringify(e)); if (!client || call) return; clearTimeout(stall); say("Couldn't connect. Try again."); hangup(); }); // after leaving, a late error is not news
+    client.on("telnyx.socket.close", () => report("socket-close"));
     client.on("telnyx.notification", (n) => {
       if (!n.call) return;
       const st = n.call.state;
+      if (st !== n.call.__lastReported) { n.call.__lastReported = st; report("call", st + (n.call.cause ? ` ${n.call.cause}` : "")); }
       if (st === "active") { say(`You're on the call, ${j.name}. Speak whenever you like.`); $("go").textContent = "Leave the call"; $("go").className = "leave"; $("go").disabled = false; }
       else if (st === "ringing" || st === "trying" || st === "requesting") say("Connecting...");
       else if (st === "hangup" || st === "destroy") { if (call) say("The call ended."); hangup(); }
     });
     client.connect();
-  } catch (e) { say(e.name === "NotAllowedError" ? "Telegram needs microphone access to join." : `Couldn't join: ${e.message}`); hangup(); }
+  } catch (e) { report("join-failed", `${e.name}: ${e.message}`); say(e.name === "NotAllowedError" ? "Telegram needs microphone access to join." : `Couldn't join: ${e.message}`); hangup(); }
 };
 window.addEventListener("pagehide", hangup);
 </script>

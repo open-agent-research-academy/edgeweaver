@@ -54,7 +54,7 @@ const LIVE_MODEL = "gpt-live-1";
 const env = Object.fromEntries((await readFile(join(ROOT, ".env.local"), "utf8"))
   .split(/\r?\n/).map((l) => l.match(/^([A-Za-z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
 // a second instance serves another being from the same .env.local: these few keys may come from the process env
-for (const k of ["EW_GPTLIVE_BEING", "EW_GPTLIVE_MEMORY", "EW_GPTLIVE_VOICE", "EW_GPTLIVE_PORT", "TELNYX_APP_ID", "TELNYX_NUMBER", "EW_VOICE_ROUTES"]) if (process.env[k]) env[k] = process.env[k];
+for (const k of ["EW_GPTLIVE_BEING", "EW_GPTLIVE_MEMORY", "EW_GPTLIVE_VOICE", "EW_GPTLIVE_PORT", "TELNYX_APP_ID", "TELNYX_NUMBER", "EW_VOICE_ROUTES", "EW_CALL_TELEGRAM_USERS_GENESIS"]) if (process.env[k]) env[k] = process.env[k]; // the last one: a test caller for a trial run
 const cfg = {
   apiKey: env.OPENAI_API_KEY || "",
   webhookSecret: env.OPENAI_WEBHOOK_SECRET || "",
