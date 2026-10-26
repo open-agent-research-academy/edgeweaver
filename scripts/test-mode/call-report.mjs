@@ -6,10 +6,12 @@
 // call's log (logs/voice/gptlive-*.jsonl) plus the party-line logs, so a live call and a backfill take
 // the same path.
 //
-// Privacy: transcripts go to Alan's DM only, never a group or room. Genesis's calls use Genesis's bot
-// (the chat his diaries arrive in). Alpha's calls use Alpha's bot as a DM to Alan; that bot normally
-// speaks only in the circle's group, and Telegram refuses a DM until Alan has started it, in which
-// case the report is logged as not sent rather than routed anywhere else.
+// Where (Alan, 2026-10-25, later the same night): "I want all Genesis calls to go to the Genesis Telegram
+// chat. Group... And the alpha to go to the alpha chat group... The idea is for transparency with these
+// calls." Each being's own bot posts into its group: EW_CALL_REPORTS_CHAT_<BEING> (chat id) and optional
+// EW_CALL_REPORTS_TOPIC_<BEING> (forum topic). Alpha defaults to ALPHA_GROUP_ID (its circle group);
+// Genesis has no group default and falls back to Alan's DM until its group's id is set. In a group,
+// phone numbers never appear: a known caller is named, an unknown one shows only its last four digits.
 //
 // CLI (backfill / resend):  node scripts/test-mode/call-report.mjs <genesis|alpha> <log.jsonl>...
 import { readFile, readdir } from "node:fs/promises";
@@ -45,7 +47,16 @@ async function callersDuring(root, from, to) {
 const fmtTime = (t) => new Intl.DateTimeFormat("en-US", { timeZone: ET, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(t)) + " ET";
 const mmss = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
 
-export async function buildReport({ root, being, rows, env }) {
+// where a being's call reports go: { token, chat, topic, group }
+export function destination(being, env) {
+  const B = being.toUpperCase();
+  const token = being === "alpha" ? env.ALPHA_BOT_TOKEN : env.TELEGRAM_BOT_TOKEN;
+  const groupChat = env[`EW_CALL_REPORTS_CHAT_${B}`] || (being === "alpha" ? env.ALPHA_GROUP_ID : "");
+  const chat = groupChat || env.TELEGRAM_ALLOWED_USER_ID; // no group set: Alan's DM, never anywhere else
+  return { token, chat, topic: groupChat ? env[`EW_CALL_REPORTS_TOPIC_${B}`] || "" : "", group: !!groupChat };
+}
+
+export async function buildReport({ root, being, rows, env, group = false }) {
   const start = rows.find((r) => r.type === "session-start");
   if (!start) throw new Error("no session-start in the log");
   const end = rows.find((r) => r.type === "session-end");
@@ -53,7 +64,9 @@ export async function buildReport({ root, being, rows, env }) {
   const ep = rows.find((r) => r.type === "episode-written"), epFail = rows.find((r) => r.type === "episode-failed");
   const names = Object.fromEntries((env[`EW_VOICE_CALLERS_${being.toUpperCase()}`] || "").split(",").map((s) => s.trim().split("=")).filter(([n]) => n).map(([n, name]) => [n, (name || "").trim()]));
   const nums = await callersDuring(root, start.t - 30000, (end?.t || lastT) + 5000);
-  const callerLabel = (n) => (names[n] ? `${names[n]} (caller ID ...${n.slice(-4)}, most likely ${names[n] === "Alan" ? "you" : names[n]})` : `unknown number ${n}`);
+  const callerLabel = (n) => group
+    ? (names[n] ? `${names[n]} (by caller ID)` : `an unknown number ending ${n.slice(-4)}`)
+    : (names[n] ? `${names[n]} (caller ID ...${n.slice(-4)}, most likely ${names[n] === "Alan" ? "you" : names[n]})` : `unknown number ${n}`);
   const callerText = nums.length ? nums.map(callerLabel).join("; ") : "not known (no caller ID on this call)";
   const speaker = nums.length === 1 && names[nums[0]] ? names[nums[0]] : "Caller";
   const beingName = WHO[being] || being;
@@ -98,12 +111,12 @@ async function tg(token, method, body) {
 }
 
 export async function sendReport({ being, env, report }) {
-  const token = being === "alpha" ? env.ALPHA_BOT_TOKEN : env.TELEGRAM_BOT_TOKEN;
-  const chat = env.TELEGRAM_ALLOWED_USER_ID; // Alan's own user id: a DM, never a group
-  if (!token || !chat) throw new Error(`missing ${being === "alpha" ? "ALPHA_BOT_TOKEN" : "TELEGRAM_BOT_TOKEN"} or TELEGRAM_ALLOWED_USER_ID`);
-  const msg = await tg(token, "sendMessage", { chat_id: chat, text: report.text.slice(0, 4000) });
+  const { token, chat, topic } = destination(being, env);
+  if (!token || !chat) throw new Error(`missing ${being === "alpha" ? "ALPHA_BOT_TOKEN" : "TELEGRAM_BOT_TOKEN"} or a chat to post to`);
+  const msg = await tg(token, "sendMessage", { chat_id: chat, text: report.text.slice(0, 4000), ...(topic ? { message_thread_id: Number(topic) } : {}) });
   const form = new FormData();
   form.append("chat_id", chat);
+  if (topic) form.append("message_thread_id", topic);
   form.append("reply_to_message_id", String(msg.message_id));
   form.append("document", new Blob([report.transcript], { type: "text/plain" }), report.fileName);
   const doc = await tg(token, "sendDocument", form);
@@ -112,8 +125,8 @@ export async function sendReport({ being, env, report }) {
 
 export async function reportCall({ root, being, logFile }) {
   const env = await readEnv(root);
-  const report = await buildReport({ root, being, rows: await readRows(logFile), env });
-  return sendReport({ being, env, report });
+  const report = await buildReport({ root, being, rows: await readRows(logFile), env, group: destination(being, env).group });
+  return { ...(await sendReport({ being, env, report })), chat: destination(being, env).group ? "group" : "dm" };
 }
 
 // CLI: backfill or resend
@@ -122,7 +135,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const [being, ...files] = process.argv.slice(2);
   if (!WHO[being] || !files.length) { console.error("usage: node scripts/test-mode/call-report.mjs <genesis|alpha> <log.jsonl>..."); process.exit(1); }
   for (const f of files) {
-    try { const r = await reportCall({ root, being, logFile: f }); console.log(`${basename(f)}: sent (message ${r.messageId}, transcript ${r.documentMessageId})`); }
+    try { const r = await reportCall({ root, being, logFile: f }); console.log(`${basename(f)}: sent to ${r.chat} (message ${r.messageId}, transcript ${r.documentMessageId})`); }
     catch (e) { console.error(`${basename(f)}: not sent: ${e.message}`); process.exitCode = 1; }
   }
 }
