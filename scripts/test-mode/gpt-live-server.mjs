@@ -41,6 +41,7 @@ import { LiveMind } from "./live-mind.mjs";
 import { PartyLine, verifyTelnyx } from "./party-line.mjs";
 import { loadBeing } from "./being-voice.mjs";
 import { beingMemory } from "./being-memory.mjs";
+import { reportCall } from "./call-report.mjs";
 
 const VERSION = "g0.1";
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -473,11 +474,17 @@ class BridgeSession {
     if (this.spec) { this.spec.dropped = true; this.spec = null; }
     try { this.mind.interrupt?.(); } catch { /* fine */ }
     // D50: a call Alan actually spoke in becomes an episode, written by the being itself before its mind closes
-    if (MEMORY && this.turns.some((t) => t.sentences)) this.writeback(this.mind);
-    else this.mind.stop();
+    const written = MEMORY && this.turns.some((t) => t.sentences) ? this.writeback(this.mind) : (this.mind.stop(), Promise.resolve());
     try { this.ws?.close(); } catch { /* fine */ }
     this.log("session-end", { reason, seconds: this.seconds, turns: this.turns.length });
     sessions.delete(this.id);
+    // a copy of every phone call in Alan's Telegram DM, after the episode so its summary rides along
+    // (Alan, 10-25). Switch: EW_CALL_REPORTS=on in .env.local; off stops it with nothing else changed.
+    if (this.kind === "sip" && BEING && env.EW_CALL_REPORTS === "on") {
+      written.then(() => new Promise((r) => setTimeout(r, 1500))) // let the log's last appends land
+        .then(() => reportCall({ root: ROOT, being: BEING.being, logFile: this.logFile }))
+        .then((r) => this.log("call-reported", { messageId: r.messageId }), (e) => this.log("call-report-failed", { error: String(e.message || e) }));
+    }
   }
 
   scheduleRecall() {
