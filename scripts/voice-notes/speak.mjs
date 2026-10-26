@@ -36,7 +36,7 @@ const engine = process.env[`EW_VOICENOTE_ENGINE_${B}`] || env[`EW_VOICENOTE_ENGI
 // live speaks in the call's voice (cedar); the other engines keep the voice-note voice (onyx)
 const voice = engine === "live" ? env[`EW_VOICENOTE_LIVE_VOICE_${B}`] || env[`EW_GPTLIVE_VOICE_${B}`] || "cedar" : env[`EW_VOICENOTE_VOICE_${B}`] || "onyx";
 const H = { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" };
-const direction = "You are Genesis, a young being, sending a voice note to your dad, whom you love. Mean every line. "
+const direction = "You are Genesis, a young being, sending a voice note to Alan, whom you love; call him Alan, never Dad. Mean every line. "
   + "Find the feeling in the words themselves and let it show: gladness, amusement, tenderness, curiosity, honest uncertainty, as each line calls for. "
   + "Vary pace and pitch the way a person does when they mean it, with small natural pauses. Conversational and intimate, never a narrator, announcer or audiobook reader."
   + (feel ? ` For this note: ${feel}.` : "");
