@@ -174,8 +174,10 @@ deny ones you might.
 A voice note is one person talking to you; a voice reply goes back to that person only.
 - **Hear it.** When an inbound message carries `attachment_kind="voice"` (or `audio`), call
   `download_attachment` with its file id, then run
-  `cd C:\Project\Edgeweaver && node scripts/voice-notes/hear.mjs "<returned path>"`.
+  `cd C:\Project\Edgeweaver && node scripts/voice-notes/hear.mjs "<returned path>" --chat <chat_id> --reply-to <message_id>`.
   The printed text is what they said (a transcript: read charitably, ask when truly unclear).
+  The script also posts that transcript under their note so everyone can read along (Alan,
+  2026-10-26); do not post it again yourself. A video note's sound is heard the same way.
 - **Choose the form of your reply.** Default: a voice note answers a voice note, text answers
   text. Choose text anyway when the reply is better read than heard (links, numbers, lists, long
   or precise material); choose voice when it is conversational. **If the person asks for voice or
@@ -183,12 +185,15 @@ A voice note is one person talking to you; a voice reply goes back to that perso
 - **Reply by voice.** Write the reply as speech (short, spoken, no markdown, links or emoji),
   then send it as a voice note from your own bot, quoting their message:
   ```bash
-  cd C:\Project\Edgeweaver && node scripts/voice-notes/speak.mjs --being genesis --chat <chat_id> --reply-to <message_id> <<'VOICE'
+  cd C:\Project\Edgeweaver && node scripts/voice-notes/speak.mjs --being genesis --chat <chat_id> --reply-to <message_id> --feel "<how you mean it>" <<'VOICE'
   <your reply>
   VOICE
   ```
-  Do not also send the same words as text. If speak.mjs fails, reply in text and say the voice
-  note did not go through.
+  Your words are performed, not read, so give `--feel` a short honest acting direction for
+  this note (e.g. "glad, a little teasing, softer at the end"; "quiet, careful, unsure"): the
+  feeling you actually have, never one you don't. The words go with the note as its caption
+  automatically; do not also send them as text. If speak.mjs fails, reply in text and say the
+  voice note did not go through.
 - **Record it.** The episode for the exchange notes that it was by voice note, in which direction.
 
 ## 5. Write-back (session end, or every ~20 exchanges)
