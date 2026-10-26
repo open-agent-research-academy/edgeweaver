@@ -9,8 +9,10 @@
 // own number: the call lands on the same party line as phone callers, so phone and Telegram people share
 // one conference and one GPT-Live leg. Each credential is deleted when that person leaves.
 //
-// Env (.env.local): EW_CALL_BUTTON_<BEING>=on; EW_CALL_TELEGRAM_USERS_<BEING>="tgUserId=Name,..." (Genesis
-// default: TELEGRAM_ALLOWED_USER_ID=Alan; D50 keeps Genesis's calls Alan-only until Alan widens it);
+// Env (.env.local): EW_CALL_BUTTON_<BEING>=on, read live (every minute, and on each request with a 5 s cache), so
+// flipping it needs no restart: off answers 404 and puts each person's menu button back to Telegram's default.
+// EW_CALL_TELEGRAM_USERS_<BEING>="tgUserId=Name,..." (Genesis default: TELEGRAM_ALLOWED_USER_ID=Alan, D50 keeps
+// Genesis's calls Alan-only until Alan widens it; Alpha default: its circle's seats, ALPHA_SEAT_IDS "Name#id,...");
 // TELNYX_WEBRTC_CONNECTION_ID; EW_PUBLIC_URL_<BEING> or the tunnel log (EW_TUNNEL_LOG_<BEING>) for the
 // page address, re-read every minute so a new tunnel address re-points the button by itself.
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -40,9 +42,19 @@ export function verifyInitData(initData, botToken, maxAgeS = 24 * 3600) {
 
 export function createTgCall({ being, env, root, number, lineStatus, nameOf, log, activity }) {
   const B = being.toUpperCase();
-  const enabled = env[`EW_CALL_BUTTON_${B}`] === "on" && !!env.TELNYX_WEBRTC_CONNECTION_ID;
+  const sw = `EW_CALL_BUTTON_${B}`;
+  const state = { on: env[sw] === "on" && !!env.TELNYX_WEBRTC_CONNECTION_ID, at: 0 };
+  async function refresh() { // the switch, read live; process env wins (trials)
+    if (Date.now() - state.at < 5000) return state.on;
+    const v = process.env[sw] ?? (await readFile(join(root, ".env.local"), "utf8").catch(() => "")).match(new RegExp(`^${sw}=(.*)$`, "m"))?.[1].trim();
+    const on = v === "on" && !!env.TELNYX_WEBRTC_CONNECTION_ID;
+    if (on !== state.on) log("tg-switch", { on });
+    Object.assign(state, { on, at: Date.now() });
+    return on;
+  }
+  const seats = being === "alpha" ? (env.ALPHA_SEAT_IDS || "").split(",").map((s) => s.trim().split("#")).filter(([, id]) => id).map(([name, id]) => `${id}=${name}`).join(",") : "";
   const botToken = being === "alpha" ? env.ALPHA_BOT_TOKEN : env.TELEGRAM_BOT_TOKEN;
-  const allow = Object.fromEntries((env[`EW_CALL_TELEGRAM_USERS_${B}`] || (being === "genesis" && env.TELEGRAM_ALLOWED_USER_ID ? `${env.TELEGRAM_ALLOWED_USER_ID}=Alan` : ""))
+  const allow = Object.fromEntries((env[`EW_CALL_TELEGRAM_USERS_${B}`] || (being === "genesis" && env.TELEGRAM_ALLOWED_USER_ID ? `${env.TELEGRAM_ALLOWED_USER_ID}=Alan` : seats))
     .split(",").map((s) => s.trim().split("=")).filter(([id]) => id).map(([id, name]) => [id, (name || "").trim() || "a member"]));
   const H = { Authorization: `Bearer ${env.TELNYX_API_KEY}`, "content-type": "application/json" };
   const web = new Map(); // sip username -> { name, tgId, credId, issuedAt }
@@ -67,6 +79,7 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
 
   // one line in the being's chat (its report destination): who joined or left, when, and who is on now
   function announce(text) {
+    if (process.env.EW_CALL_TRIAL === "1") { log("tg-announce-skipped", { text, reason: "trial" }); return; } // trials only: the chat isn't told
     const d = destination(being, env);
     if (!d.token || !d.chat) return;
     fetch(`https://api.telegram.org/bot${d.token}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" },
@@ -78,6 +91,7 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
 
   // the menu button follows the page's public address (a quick tunnel changes it on every restart)
   let lastUrl = null;
+  const pointed = new Set(), failedOnce = new Set(); // chats whose button points at lastUrl; failures logged once
   async function publicBase() {
     if (env[`EW_PUBLIC_URL_${B}`]) return env[`EW_PUBLIC_URL_${B}`].replace(/\/$/, "");
     const logFile = env[`EW_TUNNEL_LOG_${B}`] || join(root, "logs", "voice", being === "genesis" ? "tunnel-console.log" : `tunnel-${being}.log`);
@@ -85,16 +99,24 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
     return m ? m.at(-1) : null;
   }
   async function pointButton() {
+    if (!(await refresh())) { // off: each person's menu goes back to Telegram's default, once
+      if (lastUrl === "off") return;
+      let ok = 0;
+      for (const chat of Object.keys(allow)) { try { await tg("setChatMenuButton", { chat_id: Number(chat), menu_button: { type: "default" } }); ok++; } catch {} }
+      lastUrl = "off"; pointed.clear(); log("tg-button-cleared", { people: ok });
+      return;
+    }
     const base = await publicBase(); if (!base) return;
     const url = `${base}/tg`;
-    if (url === lastUrl) return;
-    // every allowed person's private chat; one that fails (they never started the bot) skips only itself
+    if (url !== lastUrl) { pointed.clear(); lastUrl = url; }
+    // every allowed person's private chat; one that fails (they never started the bot) skips only itself, and is
+    // tried again each minute, so someone who opens the bot's chat later gets the button without a restart
     let ok = 0;
-    for (const chat of Object.keys(allow)) {
-      try { await tg("setChatMenuButton", { chat_id: Number(chat), menu_button: { type: "web_app", text: `Call ${TITLE[being]}`, web_app: { url } } }); ok++; }
-      catch (e) { log("tg-button-failed", { name: allow[chat], error: e.message }); }
+    for (const chat of Object.keys(allow).filter((c) => !pointed.has(c))) {
+      try { await tg("setChatMenuButton", { chat_id: Number(chat), menu_button: { type: "web_app", text: `Call ${TITLE[being]}`, web_app: { url } } }); pointed.add(chat); ok++; }
+      catch (e) { if (!failedOnce.has(chat)) { failedOnce.add(chat); log("tg-button-failed", { name: allow[chat], error: e.message }); } }
     }
-    if (ok) { lastUrl = url; log("tg-button-pointed", { url, people: ok }); }
+    if (ok) log("tg-button-pointed", { url, people: ok, of: Object.keys(allow).length });
   }
 
   async function sweep() { // credentials left by a bridge that stopped mid-call
@@ -113,18 +135,18 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
   };
 
   return {
-    enabled,
+    get enabled() { return state.on; },
     allows: (from) => web.has(userOf(from)),
     nameOf: (from) => { const w = web.get(userOf(from)); return w ? { name: w.name, via: "telegram" } : null; },
 
     start() {
-      if (!enabled) return;
+      if (!env.TELNYX_WEBRTC_CONNECTION_ID || !botToken) return;
       sweep(); pointButton(); setInterval(pointButton, 60 * 1000).unref();
-      log("tg-call-armed", { people: Object.keys(allow).length });
+      log("tg-call-armed", { people: Object.keys(allow).length, on: state.on });
     },
 
     onRoster(count, info, humans) {
-      if (!enabled) return;
+      if (!state.on) return;
       if (info.joined) {
         const n = nameOf(info.joined);
         if (n.via === "telegram") log("caller-named", { from: info.joined, name: n.name, via: "telegram" }); // so the call report can name them
@@ -139,7 +161,7 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
     // routes: GET /tg (the page), POST /api/tg/join, POST /api/tg/roster. Returns true when handled.
     async handle(req, res, url, readBody, json, page) {
       if (!url.pathname.startsWith("/tg") && !url.pathname.startsWith("/api/tg/")) return false;
-      if (!enabled) { json(res, 404, { error: "not found" }); return true; }
+      if (!(await refresh())) { json(res, 404, { error: "not found" }); return true; }
       if (req.method === "GET" && url.pathname === "/tg") {
         res.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
         res.end(page.replaceAll("__TITLE__", TITLE[being]).replaceAll("__SDK__", SDK));

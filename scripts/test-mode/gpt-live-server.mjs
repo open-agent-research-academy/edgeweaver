@@ -54,7 +54,10 @@ const LIVE_MODEL = "gpt-live-1";
 const env = Object.fromEntries((await readFile(join(ROOT, ".env.local"), "utf8"))
   .split(/\r?\n/).map((l) => l.match(/^([A-Za-z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
 // a second instance serves another being from the same .env.local: these few keys may come from the process env
-for (const k of ["EW_GPTLIVE_BEING", "EW_GPTLIVE_MEMORY", "EW_GPTLIVE_VOICE", "EW_GPTLIVE_PORT", "TELNYX_APP_ID", "TELNYX_NUMBER", "EW_VOICE_ROUTES", "EW_CALL_TELEGRAM_USERS_GENESIS"]) if (process.env[k]) env[k] = process.env[k]; // the last one: a test caller for a trial run
+for (const k of ["EW_GPTLIVE_BEING", "EW_GPTLIVE_MEMORY", "EW_GPTLIVE_VOICE", "EW_GPTLIVE_PORT", "TELNYX_APP_ID", "TELNYX_NUMBER", "EW_VOICE_ROUTES", "EW_CALL_TELEGRAM_USERS_GENESIS", "EW_CALL_TELEGRAM_USERS_ALPHA"]) if (process.env[k]) env[k] = process.env[k]; // the last one: a test caller for a trial run
+// a being's own keys (Alpha's bot token and circle seats) live in avatars/<being>/.env.local; the root file wins
+if (env.EW_GPTLIVE_BEING) for (const m of (await readFile(join(ROOT, "avatars", env.EW_GPTLIVE_BEING, ".env.local"), "utf8").catch(() => ""))
+  .split(/\r?\n/).map((l) => l.match(/^([A-Za-z0-9_]+)=(.*)$/)).filter(Boolean)) if (!(m[1] in env)) env[m[1]] = m[2].trim();
 const cfg = {
   apiKey: env.OPENAI_API_KEY || "",
   webhookSecret: env.OPENAI_WEBHOOK_SECRET || "",
@@ -510,7 +513,9 @@ class BridgeSession {
     sessions.delete(this.id);
     // a copy of every phone call in Alan's Telegram DM, after the episode so its summary rides along
     // (Alan, 10-25). Switch: EW_CALL_REPORTS=on in .env.local; off stops it with nothing else changed.
-    if (this.kind === "sip" && BEING && env.EW_CALL_REPORTS === "on") {
+    // EW_CALL_TRIAL=1 (process env, trials only): the report stays in the log, so a being's people aren't told about a test
+    if (this.kind === "sip" && BEING && process.env.EW_CALL_TRIAL === "1") this.log("call-report-skipped", { reason: "trial" });
+    else if (this.kind === "sip" && BEING && env.EW_CALL_REPORTS === "on") {
       written.then(() => new Promise((r) => setTimeout(r, 1500))) // let the log's last appends land
         .then(() => reportCall({ root: ROOT, being: BEING.being, logFile: this.logFile }))
         .then((r) => this.log("call-reported", { messageId: r.messageId }), (e) => this.log("call-report-failed", { error: String(e.message || e) }));

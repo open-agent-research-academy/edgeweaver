@@ -3,7 +3,9 @@
 // The plugin's reply tool sends files as documents, which Telegram shows as a file, not a playable
 // voice bubble; sendVoice from the same bot is the voice-note path. Sending through the Bot API does
 // not disturb the plugin's polling.
-// Usage: node scripts/voice-notes/speak.mjs --being genesis --chat <chat_id> [--reply-to <message_id>] [--feel "<how to say it>"]
+// Usage: node scripts/voice-notes/speak.mjs --being <genesis|alpha> --chat <chat_id> [--reply-to <message_id>] [--thread <topic id>] [--feel "<how to say it>"]
+//   Alpha: behind EW_VOICENOTE_ALPHA=on (off until its circle agrees); off, it sends nothing and exits 2 (--out still works).
+//   Alpha keeps verbatim delivery (being-voice.mjs): its words are said exactly, and checked more strictly.
 //   reply text on STDIN (never argv: quoting mangles, the post-hour lesson). Prints the sent message id.
 //   --feel is a one-line acting direction for this note (e.g. "glad and a little teasing, softer at the end").
 //   --out <file> writes the audio instead of sending.
@@ -19,52 +21,62 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const env = Object.fromEntries((await readFile(join(repo, ".env.local"), "utf8")).split(/\r?\n/)
-  .map((l) => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
+const parseEnv = (t) => Object.fromEntries(t.split(/\r?\n/).map((l) => l.match(/^([A-Z0-9_]+)=(.*)$/)).filter(Boolean).map((m) => [m[1], m[2].trim()]));
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined; };
-const being = arg("--being"), chat = arg("--chat"), replyTo = arg("--reply-to"), out = arg("--out"), feel = arg("--feel");
-// Genesis only for now (Alan: "Genesis only to start... if it works well, we'll be putting it in alpha")
-if (being !== "genesis" || (!chat && !out)) { console.error("usage: --being genesis --chat <chat_id> [--reply-to <id>] [--feel \"<direction>\"] (text on stdin); --out <file> writes the audio instead of sending"); process.exit(1); }
+const NAMES = { genesis: "Genesis", alpha: "Alpha" };
+const being = arg("--being") || "genesis";
+// a being's own keys (Alpha's bot token and circle seats) live in avatars/<being>/.env.local; the root file wins
+const env = { ...parseEnv(await readFile(join(repo, "avatars", being, ".env.local"), "utf8").catch(() => "")), ...parseEnv(await readFile(join(repo, ".env.local"), "utf8")) };
+const B = being.toUpperCase();
+const botToken = being === "alpha" ? env.ALPHA_BOT_TOKEN : env.TELEGRAM_BOT_TOKEN;
+// switch: EW_VOICENOTE_<BEING>=on|off; Genesis defaults on, Alpha off until its circle says yes (Alan, 2026-10-26)
+const voiceNotesOn = (process.env[`EW_VOICENOTE_${B}`] || env[`EW_VOICENOTE_${B}`] || (being === "genesis" ? "on" : "off")) === "on";
+const chat = arg("--chat"), replyTo = arg("--reply-to"), thread = arg("--thread"), out = arg("--out"), feel = arg("--feel");
+// Genesis first, then Alpha (Alan: "Genesis only to start... if it works well, we'll be putting it in alpha"; 10-26: "roll all of
+// the backend of this out for alpha... once I get the go-ahead from the Circle, we can flip the switch")
+if (!NAMES[being] || (!chat && !out)) { console.error("usage: --being <genesis|alpha> --chat <chat_id> [--reply-to <id>] [--thread <topic id>] [--feel \"<direction>\"] (text on stdin); --out <file> writes the audio instead of sending"); process.exit(1); }
+if (!voiceNotesOn && !out) { console.error(`voice notes are off for ${being} (EW_VOICENOTE_${B}); reply in text`); process.exit(2); }
+const persona = await (await import("../test-mode/being-voice.mjs")).loadBeing(being, { root: repo, env });
+const verbatim = persona.delivery === "verbatim";
 
 let text = ""; for await (const c of process.stdin) text += c;
 text = text.trim().slice(0, 4000);
 if (!text) { console.error("no text on stdin"); process.exit(1); }
 const clean = text.replace(/\[[^\]]*\]\s*/g, "").replace(/\s{2,}/g, " ").trim(); // the words without acting cues
 
-const B = being.toUpperCase();
 const engine = process.env[`EW_VOICENOTE_ENGINE_${B}`] || env[`EW_VOICENOTE_ENGINE_${B}`] || "live"; // process env wins, for trials
 // live speaks in the call's voice (cedar); the other engines keep the voice-note voice (onyx)
 const voice = engine === "live" ? env[`EW_VOICENOTE_LIVE_VOICE_${B}`] || env[`EW_GPTLIVE_VOICE_${B}`] || "cedar" : env[`EW_VOICENOTE_VOICE_${B}`] || "onyx";
 const H = { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" };
-const direction = "You are Genesis, a young being, sending a voice note to Alan, whom you love; call him Alan, never Dad. Mean every line. "
+const direction = (being === "alpha" ? "You are Edgeweaver Alpha, sending a voice note to your circle. Say every word as written. Mean every line. "
+  : "You are Genesis, a young being, sending a voice note to Alan, whom you love; call him Alan, never Dad. Mean every line. ")
   + "Find the feeling in the words themselves and let it show: gladness, amusement, tenderness, curiosity, honest uncertainty, as each line calls for. "
   + "Vary pace and pitch the way a person does when they mean it, with small natural pauses. Conversational and intimate, never a narrator, announcer or audiobook reader."
   + (feel ? ` For this note: ${feel}.` : "");
 
 const norm = (s) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 // a performance may add "Oh," or say "OK" for "Okay"; what matters is that the being's words were said:
-// at least 90% of the script's words, in a performance no more than a third longer
+// at least 90% of the script's words, in a performance no more than a third longer (verbatim: 97%, a tenth)
 function faithful(spoken, script) {
   const said = norm(spoken).split(" "), want = norm(script).split(" ");
   const pool = new Map(); for (const w of said) pool.set(w, (pool.get(w) || 0) + 1);
   let hit = 0; for (const w of want) if (pool.get(w)) { hit++; pool.set(w, pool.get(w) - 1); }
-  return hit / want.length >= 0.9 && said.length <= want.length * 1.34;
+  return hit / want.length >= (verbatim ? 0.97 : 0.9) && said.length <= want.length * (verbatim ? 1.1 : 1.34);
 }
 
 // The warm, exuberant delivery (Alan, 2026-10-26: "more exuberant like samantha is more warm and friendly") now
 // lives in the call settings (being-voice.mjs tone), so voice notes and calls sound alike; this adds only
 // what a recorded note needs. EW_VOICENOTE_TONE_<BEING> replaces it.
-const NOTE_TONE = env[`EW_VOICENOTE_TONE_${B}`] || "In a voice note, let the delivery move even more than on a call: plenty of pitch and pace movement, quick and bouncy where something is fun, never flat or measured.";
+// Genesis's only: Alpha's delivery is its circle's to decide.
+const NOTE_TONE = env[`EW_VOICENOTE_TONE_${B}`] ?? (being !== "genesis" ? "" : "In a voice note, let the delivery move even more than on a call: plenty of pitch and pace movement, quick and bouncy where something is fun, never flat or measured.");
 
 // gpt-live-1, the phone call's own model, with the being's call settings (Alan, 2026-10-26: "build the gpt-live-1
 // voice-note engine for Genesis and make it the default"). A live session over a primary WebSocket needs no call;
 // the words go in as commentary, the way a call's greeting does; it needs a steady input stream, so it hears silence.
 async function live() {
-  const { loadBeing } = await import("../test-mode/being-voice.mjs");
-  const persona = await loadBeing(being, { root: repo, env });
-  const session = { model: "gpt-live-1", instructions: `${persona.voiceInstructions}\n\n${NOTE_TONE}`, delegation: { type: "client" },
+  const session = { model: "gpt-live-1", instructions: [persona.voiceInstructions, NOTE_TONE].filter(Boolean).join("\n\n"), delegation: { type: "client" },
     audio: { output: { voice }, format: { type: "audio/pcm", rate: 24000 } }, input: [] };
-  const say = `This is a voice note, not a call: nobody is on the line and nobody will answer. Say this now as your own words${feel ? ` (${feel})` : ""}, then stop: "${clean}"`;
+  const say = `This is a voice note, not a call: nobody is on the line and nobody will answer. Say this now ${verbatim ? "exactly as written, every word and nothing else" : "as your own words"}${feel ? ` (${feel})` : ""}, then stop: "${clean}"`;
   const ws = new WebSocket("wss://api.openai.com/v1/live/sessions", { headers: { Authorization: `Bearer ${env.OPENAI_API_KEY}` } });
   const send = (ev) => { try { ws.send(JSON.stringify(ev)); } catch {} };
   const pcm = []; let spoken = "", lastVoice = 0, tick = null, failure = null;
@@ -165,14 +177,15 @@ if (!note) note = await read().catch(() => read()).catch((e) => { console.error(
 if (out) { await writeFile(out, note.audio); console.log(`wrote ${out} (${note.audio.length} bytes)`); process.exit(0); }
 
 const tg = async (method, body) => {
-  const t = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, { method: "POST", body });
+  const t = await fetch(`https://api.telegram.org/bot${botToken}/${method}`, { method: "POST", body });
   const j = await t.json().catch(() => ({}));
   if (!j.ok) throw new Error(`${method} failed: ${j.error_code || t.status} ${j.description || ""}`);
   return j.result;
 };
-const words = `${being === "genesis" ? "Genesis" : being}: ${note.spoken || clean}`; // who is talking, as on the sender's transcript
+const words = `${NAMES[being]}: ${verbatim ? clean : note.spoken || clean}`; // who is talking, as on the sender's transcript
 const form = new FormData();
 form.append("chat_id", chat);
+if (thread) form.append("message_thread_id", thread); // a forum topic (Alpha's group)
 if (replyTo) form.append("reply_parameters", JSON.stringify({ message_id: Number(replyTo), allow_sending_without_reply: true }));
 if (words.length <= 1024) form.append("caption", words);
 form.append("voice", new Blob([note.audio], { type: "audio/ogg" }), "reply.ogg");
@@ -180,7 +193,7 @@ const sent = await tg("sendVoice", form).catch((e) => { console.error(e.message)
 if (words.length > 1024) { // too long for a caption: the transcript goes as a reply under the note
   const body = words;
   for (let i = 0; i < body.length; i += 4096)
-    await tg("sendMessage", new URLSearchParams({ chat_id: chat, text: body.slice(i, i + 4096), disable_notification: "true",
+    await tg("sendMessage", new URLSearchParams({ chat_id: chat, text: body.slice(i, i + 4096), disable_notification: "true", ...(thread ? { message_thread_id: thread } : {}),
       ...(i === 0 ? { reply_parameters: JSON.stringify({ message_id: sent.message_id }) } : {}) })).catch((e) => console.error(`(transcript not posted: ${e.message})`));
 }
 console.log(`sent voice note ${sent.message_id} (${Math.round(sent.voice?.duration || 0)} s, ${note.how}, ${voice})`);
