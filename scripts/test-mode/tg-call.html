@@ -21,6 +21,20 @@
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; justify-content: space-between; padding: 6px 0; }
   li span:last-child { color: var(--muted); font-size: 14px; }
+  .live { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .orb { position: relative; width: 22px; height: 22px; flex: none; }
+  .orb::before, .orb::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--ok, #34c759); }
+  .orb::after { animation: beat 1.6s ease-out infinite; }
+  .live.quiet .orb::before, .live.quiet .orb::after { background: #f5a623; }
+  .live.quiet .orb::after { animation: none; }
+  @keyframes beat { from { transform: scale(1); opacity: .6; } to { transform: scale(2.4); opacity: 0; } }
+  #what { font-size: 16px; font-weight: 600; flex: 1; }
+  .bars { display: none; gap: 3px; align-items: center; height: 18px; }
+  .live.speaking .bars { display: flex; }
+  .bars i { width: 4px; height: 100%; border-radius: 2px; background: var(--btn); transform-origin: center; transform: scaleY(.2); transition: transform .12s; }
+  .think::after { content: ""; animation: dots 1.2s steps(4) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  @media (prefers-reduced-motion: reduce) { .orb::after, .think::after { animation: none; } }
   .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34c759; margin-right: 8px; vertical-align: middle; }
 </style>
 </head>
@@ -29,6 +43,7 @@
   <div class="sub">Talk live with __TITLE__. Anyone else on the call hears the same conversation.</div>
   <button id="go">Join the call</button>
   <div id="status"></div>
+  <div id="live" class="card live" hidden aria-live="polite"><span class="orb"></span><span id="what">Connected</span><span class="bars"><i></i><i></i><i></i><i></i></span></div>
   <button id="hear" hidden>Tap to hear __TITLE__</button>
   <div style="height:16px"></div>
   <div class="card"><h2>On the call</h2><ul id="people"><li><span>Nobody yet</span><span></span></li></ul></div>
@@ -66,20 +81,60 @@ async function audioStats(when) { // is sound reaching this page, and is the ele
   } catch (e) { report("audio-stats", `${when}: ${e.message}`); }
 }
 
+// While on a call: a pulse that beats while Genesis's audio keeps arriving, and one line for what is happening. Speaking
+// comes from the level of the audio this page receives; thinking/hearing/listening from the bridge (roster.activity);
+// the line going quiet or the microphone not sending come from the call's own packet counts.
+let activity = null, meter = null;
+const live = { linkOk: true, micOk: true, level: 0, quietSince: 0, stalls: 0 };
+function renderLive() {
+  const el = $("live"), what = $("what"); if (!call) { el.hidden = true; return; }
+  el.hidden = false;
+  const speaking = live.linkOk && live.level > 0.02;
+  el.className = `card live${live.linkOk ? "" : " quiet"}${speaking ? " speaking" : ""}`;
+  what.className = "";
+  if (!live.linkOk) what.textContent = "The line went quiet. Still trying...";
+  else if (!live.micOk) what.textContent = "Your microphone isn't sending. __TITLE__ can't hear you.";
+  else if (speaking) what.textContent = "__TITLE__ is speaking";
+  else if (activity === "thinking") { what.textContent = "__TITLE__ is thinking"; what.className = "think"; }
+  else if (activity === "hearing") what.textContent = "__TITLE__ hears you";
+  else what.textContent = "__TITLE__ is listening. Go ahead.";
+  [...el.querySelectorAll(".bars i")].forEach((b, i) => { b.style.transform = `scaleY(${speaking ? Math.min(1, 0.25 + live.level * (2.2 + (i % 2) * 1.2) + Math.random() * 0.2) : 0.2})`; });
+}
+function startMeter() {
+  let lastIn = -1, lastOut = -1, inStill = 0, outStill = 0;
+  meter = setInterval(async () => {
+    const pc = call?.peer?.instance; if (!pc) return;
+    let inP = lastIn, outP = lastOut;
+    try { for (const r of (await pc.getStats()).values()) {
+      if (r.type === "inbound-rtp" && r.kind === "audio") { inP = r.packetsReceived; live.level = r.audioLevel ?? 0; }
+      if (r.type === "outbound-rtp" && r.kind === "audio") outP = r.packetsSent;
+    } } catch { return; }
+    inStill = inP > lastIn ? 0 : inStill + 1; outStill = outP > lastOut ? 0 : outStill + 1; lastIn = inP; lastOut = outP;
+    const linkOk = inStill < 4, micOk = outStill < 4; // 2 s with no packets
+    if (linkOk !== live.linkOk) report("link", linkOk ? `audio back after ${((Date.now() - live.quietSince) / 1000).toFixed(1)} s` : `no audio packets for 2 s (#${++live.stalls})`);
+    if (!linkOk && live.linkOk) live.quietSince = Date.now();
+    if (micOk !== live.micOk) report("mic", micOk ? `sending again (#${live.stalls})` : `not sending for 2 s (#${++live.stalls})`);
+    live.linkOk = linkOk; live.micOk = micOk;
+    renderLive();
+  }, 500);
+}
+function stopMeter() { clearInterval(meter); meter = null; activity = null; Object.assign(live, { linkOk: true, micOk: true, level: 0 }); renderLive(); }
+
 async function roster() {
   try {
     const r = await post("/api/tg/roster");
+    activity = r.activity || null;
     const ul = $("people"); ul.innerHTML = "";
     if (!r.people.length) ul.innerHTML = "<li><span>Nobody yet</span><span></span></li>";
     for (const p of r.people) { const li = document.createElement("li"); li.innerHTML = `<span><span class="dot"></span></span><span></span>`;
       li.firstChild.append(`${p.name}${p.via === "telegram" ? "" : p.via === "phone" ? " (phone)" : ""}`); li.lastChild.textContent = `since ${fmt(p.since)}`; ul.append(li); }
   } catch (e) { if (!initData) say("Open this from the button in Telegram."); else if (String(e.message).includes("not open")) say("This call isn't open to you yet."); }
 }
-roster(); setInterval(roster, 3000);
+let tick = 0; roster(); setInterval(() => { if (call || ++tick % 3 === 0) roster(); }, 1000); // every second on a call, for the thinking line
 
 // ended: the call already hung up, so only the client is closed (hanging up an ended call makes the SDK error in a loop)
 function hangup(ended) { const c = call, cl = client; call = null; client = null; if (!ended) try { c?.hangup(); } catch {} try { cl?.disconnect(); } catch {}
-  speaker.srcObject = null; $("hear").hidden = true; $("go").textContent = "Join the call"; $("go").className = ""; $("go").disabled = false; }
+  speaker.srcObject = null; $("hear").hidden = true; stopMeter(); $("go").textContent = "Join the call"; $("go").className = ""; $("go").disabled = false; }
 
 $("go").onclick = async () => {
   if (call) { hangup(); say("You left the call."); return; }
@@ -101,7 +156,7 @@ $("go").onclick = async () => {
       if (st !== n.call.__lastReported) { n.call.__lastReported = st; report("call", st + (n.call.cause ? ` ${n.call.cause}` : "")); }
       if (st === "active") {
         say(`You're on the call, ${j.name}. Speak whenever you like.`); $("go").textContent = "Leave the call"; $("go").className = "leave"; $("go").disabled = false;
-        if (!n.call.__playing) { n.call.__playing = true; playRemote("call active"); setTimeout(() => audioStats("5 s"), 5000); setTimeout(() => audioStats("20 s"), 20000); }
+        if (!n.call.__playing) { n.call.__playing = true; playRemote("call active"); startMeter(); renderLive(); setTimeout(() => audioStats("5 s"), 5000); setTimeout(() => audioStats("20 s"), 20000); }
       }
       else if (st === "ringing" || st === "trying" || st === "requesting") say("Connecting...");
       else if (st === "hangup" || st === "destroy") { if (call) say("The call ended."); hangup(true); }

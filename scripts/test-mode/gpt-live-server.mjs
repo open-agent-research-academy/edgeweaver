@@ -211,7 +211,8 @@ const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.o
         for (const s of sessions.values()) if (s.kind === "sip" && !s.closed) { s.log("line-ended", { reason }); s.closeReason ||= "line_ended"; s.close(); }
       } })
   : null;
-tgCall = BEING && partyLine ? createTgCall({ being: BEING.being, env, root: ROOT, number: cfg.telnyxNumber, lineStatus: () => partyLine.status(), nameOf, log: lineLog }) : null;
+tgCall = BEING && partyLine ? createTgCall({ being: BEING.being, env, root: ROOT, number: cfg.telnyxNumber, lineStatus: () => partyLine.status(), nameOf, log: lineLog,
+  activity: () => [...sessions.values()].filter((x) => x.kind === "sip" && !x.closed).sort((a, b) => b.startedAt - a.startedAt)[0]?.activity() ?? null }) : null;
 
 class BridgeSession {
   constructor(id, kind) {
@@ -221,6 +222,8 @@ class BridgeSession {
     this.userCursor = 0;           // ledger index: user text before this was already answered
     this.voiceCursor = 0;          // ledger index: voice text before this was already reported
     this.lastInputAt = 0;
+    this.lastVoiceAt = 0;
+    this.delegatingSince = 0;      // a turn handed to the mind and not yet voiced (the call page shows "thinking")
     this.active = null;            // { delegationId, startedAt, firstSentenceMs, sentences }
     this.turns = [];               // completed turn timings for /sessions
     this.pendingDelegation = null; // settle timer handle
@@ -228,6 +231,16 @@ class BridgeSession {
     this.mind = takeMind(); // already warm, so the first delegated turn is not a cold start
     this.log("session-start", { version: VERSION, kind, voice: cfg.voice, mind: cfg.mindModel, effort: cfg.mindEffort, liveModel: LIVE_MODEL });
     sessions.set(id, this);
+  }
+
+  // what the line is doing, for the Telegram call page (Alan, 10-26: "a little icon showing that it's alive, followed by
+  // something saying Edge Weaver's thinking"). The page tells speaking apart itself, from the audio level it receives.
+  activity() {
+    const now = Date.now();
+    if (now - this.lastInputAt < 1500) return "hearing";
+    if (this.delegatingSince && now - this.delegatingSince < 30000) return "thinking";
+    if (this.lastInputAt > this.lastVoiceAt && now - this.lastInputAt < 15000) return "thinking"; // the caller spoke last, no answer yet
+    return "listening";
   }
 
   log(type, data = {}) {
@@ -309,12 +322,14 @@ class BridgeSession {
         break;
       case "session.output_transcript.delta":
         this.ledger.push({ role: "voice", text: ev.delta || "", startMs: ev.start_ms });
+        this.lastVoiceAt = Date.now(); this.delegatingSince = 0;
         this.log("transcript", { role: "voice", text: ev.delta });
         break;
       case "session.delegation.created": {
         const d = ev.delegation || {};
         if (d.target && d.target !== "client") return;
         this.log("delegation", { delegationId: d.id, offsetMs: ev.offset_ms });
+        this.delegatingSince = Date.now();
         this.scheduleDelegation(d.id);
         break;
       }

@@ -38,7 +38,7 @@ export function verifyInitData(initData, botToken, maxAgeS = 24 * 3600) {
   try { return JSON.parse(p.get("user") || "null"); } catch { return null; }
 }
 
-export function createTgCall({ being, env, root, number, lineStatus, nameOf, log }) {
+export function createTgCall({ being, env, root, number, lineStatus, nameOf, log, activity }) {
   const B = being.toUpperCase();
   const enabled = env[`EW_CALL_BUTTON_${B}`] === "on" && !!env.TELNYX_WEBRTC_CONNECTION_ID;
   const botToken = being === "alpha" ? env.ALPHA_BOT_TOKEN : env.TELEGRAM_BOT_TOKEN;
@@ -166,7 +166,7 @@ export function createTgCall({ being, env, root, number, lineStatus, nameOf, log
       }
       if (req.method === "POST" && url.pathname === "/api/tg/roster") {
         const s = lineStatus();
-        json(res, 200, { me: w.name, live: !!s.ai?.answered, people: s.humans.map((h) => ({ ...nameOf(h.from), since: h.since })) });
+        json(res, 200, { me: w.name, live: !!s.ai?.answered, activity: s.ai?.answered ? activity?.() ?? null : null, people: s.humans.map((h) => ({ ...nameOf(h.from), since: h.since })) });
         return true;
       }
       json(res, 404, { error: "not found" });
