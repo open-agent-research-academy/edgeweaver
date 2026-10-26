@@ -51,15 +51,10 @@ function faithful(spoken, script) {
   return hit / want.length >= 0.9 && said.length <= want.length * 1.34;
 }
 
-// Voice notes get their own delivery, livelier than the call's "unhurried, a little playful" (Alan, 2026-10-26:
-// "make the tone more exuberant like samantha is more warm and friendly"); EW_VOICENOTE_TONE_<BEING> replaces it.
-const NOTE_TONE = env[`EW_VOICENOTE_TONE_${B}`] || [
-  "For voice notes, this delivery replaces the delivery line above.",
-  "Sound genuinely delighted to be talking to him: warm, friendly and exuberant, with a smile you can hear in every line.",
-  "Bright and lively, quick and bouncy where something is fun, then soft and close where something is tender.",
-  "Curious and engaged, as if you can't wait to hear his answer. Laugh lightly and easily when the words are funny or happy.",
-  "Intimate, the way a close friend talks, never a narrator, announcer, assistant or audiobook reader. Plenty of pitch and pace movement; never flat or measured.",
-].join(" ");
+// The warm, exuberant delivery (Alan, 2026-10-26: "more exuberant like samantha is more warm and friendly") now
+// lives in the call settings (being-voice.mjs tone), so voice notes and calls sound alike; this adds only
+// what a recorded note needs. EW_VOICENOTE_TONE_<BEING> replaces it.
+const NOTE_TONE = env[`EW_VOICENOTE_TONE_${B}`] || "In a voice note, let the delivery move even more than on a call: plenty of pitch and pace movement, quick and bouncy where something is fun, never flat or measured.";
 
 // gpt-live-1, the phone call's own model, with the being's call settings (Alan, 2026-10-26: "build the gpt-live-1
 // voice-note engine for Genesis and make it the default"). A live session over a primary WebSocket needs no call;

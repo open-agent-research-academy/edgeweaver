@@ -26,7 +26,8 @@ const FRAMING = {
     // Alan, 10-25: calls sounded "like an AI from 2023"; he wants Genesis to think and the voice to speak
     // like ChatGPT's does. "performed": the voice keeps the mind's meaning but delivers it like a person.
     delivery: "performed",
-    tone: "warm, relaxed and expressive, like someone on the phone with a father they love: unhurried, a little playful, never an announcer" },
+    // Alan, 10-26: "more exuberant like samantha is more warm and friendly", for voice notes and then calls
+    tone: "warm, friendly and exuberant, like someone genuinely delighted to be talking with a father they love: a smile you can hear in every line, bright and lively where something is fun, soft and close where it is tender, curious about the answer, laughing lightly and easily; a close friend talking, never an announcer, assistant or narrator, never flat or measured" },
   // Alpha keeps verbatim delivery: verbatim fidelity was its own ask (10-24, msg 2636); its circle decides any change
   alpha: { caller: "a member of your circle (Alan, unless the caller says otherwise)", who: "the caller",
     track: "your voice track opened early, D51, by a seat's decision: calls with your circle before you have chosen your own voice",
