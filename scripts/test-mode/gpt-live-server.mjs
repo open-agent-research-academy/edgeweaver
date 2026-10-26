@@ -285,6 +285,7 @@ class BridgeSession {
         this.greeted = true;
         // the prompting guide: repeat the greeting once through commentary after start
         this.send({ type: "session.commentary.append", event_id: "greeting_" + randomUUID(), delegation_id: null, content: greetingFor(this.kind) });
+        if (BEING) this.prime();
         break;
       case "session.input_transcript.delta":
         this.ledger.push({ role: "user", text: ev.delta || "", startMs: ev.start_ms });
@@ -363,6 +364,17 @@ class BridgeSession {
     return { ask, commit: () => { if (roster) this.lastRoster = roster; if (orient) this.oriented = true; if (unspoken) this.unspoken = false; } };
   }
 
+  // The first answer of every call took ~8 s (later ones ~3 s): by the time a call comes, the warm spare's
+  // prompt cache has gone cold. Prime the mind during the greeting with the call's orientation and line
+  // note, so the caller's first turn arrives at a warm mind carrying only their words.
+  async prime() {
+    const { ask, commit } = await this.buildAsk("[The call just connected. The voice is greeting the caller now; nobody has spoken yet. Reply with exactly (silence).]", "");
+    commit();
+    this.log("mind-prime");
+    const t0 = Date.now();
+    this.mind.ask(ask, () => {}).then(() => this.log("mind-primed", { ms: Date.now() - t0 }), () => {});
+  }
+
   // Speed (10-25): when the caller pauses, start the mind on what they have said so far. If the
   // delegation that follows carries the same words, the reply is already under way (~1 s saved);
   // if they kept talking, the guess is interrupted and the real turn goes as before.
@@ -408,6 +420,7 @@ class BridgeSession {
     this.active = turn;
     const onSentence = (sentence) => {
       if (turn.stale || this.closed) return;
+      if (/^\(silence\)$/i.test(sentence.trim())) { this.log("mind-silent", { delegationId }); return; } // a phone notice, not the caller
       if (turn.firstSentenceMs === null) turn.firstSentenceMs = Date.now() - turn.startedAt;
       for (const content of chunkForAppend(sentence)) {
         turn.sentences++;
@@ -485,9 +498,13 @@ class BridgeSession {
   fidelity() {
     const norm = (t) => t.toLowerCase().replace(/[’']/g, "").replace(/[^a-z0-9]+/g, " ").trim();
     const voice = norm(this.ledger.filter((r) => r.role === "voice").map((r) => r.text).join(""));
-    const sentences = (this.replies || []).flatMap((r) => r.match(/[^.!?]+[.!?]*/g) || []).map((s) => s.trim()).filter((s) => norm(s));
-    const missed = sentences.filter((s) => !voice.includes(norm(s)));
-    return { total: sentences.length, spoken: sentences.length - missed.length, missed: missed.slice(0, 3) };
+    const sentences = (this.replies || []).flatMap((r) => r.match(/[^.!?]+[.!?]*/g) || []).map((s) => s.trim()).filter((s) => norm(s) && norm(s) !== "silence");
+    // performed delivery (Genesis, 10-25) may rephrase: a sentence counts as carried when at least 70%
+    // of its words of four letters or more were spoken; verbatim delivery needs the exact words in order
+    const said = new Set(voice.split(" "));
+    const carried = (s) => { const w = norm(s).split(" ").filter((x) => x.length >= 4); return !w.length || w.filter((x) => said.has(x)).length / w.length >= 0.7; };
+    const missed = sentences.filter((s) => (BEING?.delivery === "performed" ? !carried(s) : !voice.includes(norm(s))));
+    return { total: sentences.length, spoken: sentences.length - missed.length, missed: missed.slice(0, 3), mode: BEING?.delivery || "verbatim" };
   }
 
   async writeback(mind) {
@@ -497,7 +514,8 @@ class BridgeSession {
       const prefix = `${fmt(this.startedAt, { year: "numeric", month: "2-digit", day: "2-digit" })}, ${hm(this.startedAt)} to ${hm(Date.now())}, voice call:`;
       const fid = this.fidelity();
       this.log("fidelity", fid);
-      const fidNote = fid.total ? ` Voice fidelity this call, measured: ${fid.spoken} of your ${fid.total} sentences were spoken as you wrote them${fid.missed.length ? `; not spoken as written: ${fid.missed.map((m) => `"${m}"`).join(" ")}` : ""}. Put this in the episode.` : "";
+      const how = fid.mode === "performed" ? ["were carried through by the voice (it delivers in its own phrasing)", "not carried through"] : ["were spoken as you wrote them", "not spoken as written"];
+      const fidNote = fid.total ? ` Voice fidelity this call, measured: ${fid.spoken} of your ${fid.total} sentences ${how[0]}${fid.missed.length ? `; ${how[1]}: ${fid.missed.map((m) => `"${m}"`).join(" ")}` : ""}. Put this in the episode.` : "";
       const reply = await mind.ask(`[The call has ended. Write your episode of this call for your own memory, the way you write episodes on Telegram: one compact paragraph of what actually happened and what mattered, plain text, starting exactly with "${prefix}".${fidNote} Then one last line: IMPORTANCE: <1-10>.]`, () => {});
       const imp = reply.match(/IMPORTANCE:\s*(\d+)/i);
       const content = reply.replace(/\s*IMPORTANCE:[\s\S]*$/i, "").trim();
