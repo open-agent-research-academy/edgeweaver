@@ -29,6 +29,8 @@
   <div class="sub">Talk live with __TITLE__. Anyone else on the call hears the same conversation.</div>
   <button id="go">Join the call</button>
   <div id="status"></div>
+  <button id="hear" hidden>Tap to hear __TITLE__</button>
+  <div style="height:16px"></div>
   <div class="card"><h2>On the call</h2><ul id="people"><li><span>Nobody yet</span><span></span></li></ul></div>
   <audio id="remote" autoplay playsinline></audio>
 <script type="module">
@@ -42,7 +44,27 @@ const post = (path, body = {}) => fetch(path, { method: "POST", headers: { "cont
 const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 let client = null, call = null;
 // each step and error goes back to the bridge log (tg-client rows), so a failure inside Telegram is visible
-const report = (step, detail) => post("/api/tg/event", { step, detail: String(detail ?? "").slice(0, 300) }).catch(() => {});
+const seen = new Set(); // the SDK can repeat one error hundreds of times while a call ends; report each once
+const report = (step, detail) => { const k = `${step}|${detail}`; if (seen.has(k)) return; seen.add(k); post("/api/tg/event", { step, detail: String(detail ?? "").slice(0, 300) }).catch(() => {}); };
+// Android's WebView (Telegram's in-app browser) only plays sound a tap started, and the SDK just sets srcObject and
+// relies on autoplay: so the join tap starts the element, and the call's audio is played on it explicitly
+const speaker = $("remote");
+async function playRemote(why) {
+  const s = call?.remoteStream; if (s && speaker.srcObject !== s) speaker.srcObject = s;
+  speaker.muted = false; speaker.volume = 1;
+  try { await speaker.play(); $("hear").hidden = true; report("audio", `playing (${why})`); }
+  catch (e) { $("hear").hidden = false; report("audio-blocked", `${why}: ${e.name} ${e.message}`); }
+}
+$("hear").onclick = () => playRemote("tap to hear");
+async function audioStats(when) { // is sound reaching this page, and is the element playing it?
+  try {
+    const pc = call?.peer?.instance; const t = speaker.srcObject?.getAudioTracks?.()[0];
+    let rtp = "no stats";
+    if (pc) for (const r of (await pc.getStats()).values()) if (r.type === "inbound-rtp" && r.kind === "audio")
+      rtp = `packets=${r.packetsReceived} level=${(r.audioLevel ?? -1).toFixed(3)} energy=${(r.totalAudioEnergy ?? -1).toFixed(3)}`;
+    report("audio-stats", `${when}: ${rtp} el.paused=${speaker.paused} ready=${speaker.readyState} track=${t ? `${t.readyState}${t.muted ? " muted" : ""}` : "none"}`);
+  } catch (e) { report("audio-stats", `${when}: ${e.message}`); }
+}
 
 async function roster() {
   try {
@@ -55,10 +77,13 @@ async function roster() {
 }
 roster(); setInterval(roster, 3000);
 
-function hangup() { try { call?.hangup(); } catch {} try { client?.disconnect(); } catch {} call = null; client = null; $("go").textContent = "Join the call"; $("go").className = ""; $("go").disabled = false; }
+// ended: the call already hung up, so only the client is closed (hanging up an ended call makes the SDK error in a loop)
+function hangup(ended) { const c = call, cl = client; call = null; client = null; if (!ended) try { c?.hangup(); } catch {} try { cl?.disconnect(); } catch {}
+  speaker.srcObject = null; $("hear").hidden = true; $("go").textContent = "Join the call"; $("go").className = ""; $("go").disabled = false; }
 
 $("go").onclick = async () => {
   if (call) { hangup(); say("You left the call."); return; }
+  speaker.play().catch(() => {}); // inside the tap, before any await: unlocks the element for the call's audio
   $("go").disabled = true; say("Joining...");
   try {
     await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop())); // ask for the microphone up front
@@ -74,14 +99,17 @@ $("go").onclick = async () => {
       if (!n.call) return;
       const st = n.call.state;
       if (st !== n.call.__lastReported) { n.call.__lastReported = st; report("call", st + (n.call.cause ? ` ${n.call.cause}` : "")); }
-      if (st === "active") { say(`You're on the call, ${j.name}. Speak whenever you like.`); $("go").textContent = "Leave the call"; $("go").className = "leave"; $("go").disabled = false; }
+      if (st === "active") {
+        say(`You're on the call, ${j.name}. Speak whenever you like.`); $("go").textContent = "Leave the call"; $("go").className = "leave"; $("go").disabled = false;
+        if (!n.call.__playing) { n.call.__playing = true; playRemote("call active"); setTimeout(() => audioStats("5 s"), 5000); setTimeout(() => audioStats("20 s"), 20000); }
+      }
       else if (st === "ringing" || st === "trying" || st === "requesting") say("Connecting...");
-      else if (st === "hangup" || st === "destroy") { if (call) say("The call ended."); hangup(); }
+      else if (st === "hangup" || st === "destroy") { if (call) say("The call ended."); hangup(true); }
     });
     client.connect();
   } catch (e) { report("join-failed", `${e.name}: ${e.message}`); say(e.name === "NotAllowedError" ? "Telegram needs microphone access to join." : `Couldn't join: ${e.message}`); hangup(); }
 };
-window.addEventListener("pagehide", hangup);
+window.addEventListener("pagehide", () => hangup());
 </script>
 </body>
 </html>
