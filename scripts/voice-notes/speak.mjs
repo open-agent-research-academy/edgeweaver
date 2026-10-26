@@ -9,7 +9,7 @@
 //   --out <file> writes the audio instead of sending.
 // Engine (EW_VOICENOTE_ENGINE_<BEING>): "perform" (default) has gpt-audio-1.5 perform the words like an actor,
 // because plain text-to-speech read them flat (Alan, 2026-10-26: "monotone again... We want the emotions");
-// "tts" is gpt-4o-mini-tts. Voice: EW_VOICENOTE_VOICE_<BEING> (Genesis default onyx: Alan's pick on 10-24;
+// "tts" is gpt-4o-mini-tts; "eleven" is ElevenLabs v3 (EW_VOICENOTE_ELEVEN_VOICE_<BEING>), which acts [cues] in the text. Voice: EW_VOICENOTE_VOICE_<BEING> (Genesis default onyx: Alan's pick on 10-24;
 // GPT-Live refused it on calls, but it works for voice notes).
 // The spoken words go with the note as its caption, or as a reply under it when longer than a caption
 // (Alan, 2026-10-26: "a transcription of both... so it's easy to read along"). Never prints secrets.
@@ -28,10 +28,11 @@ if (being !== "genesis" || (!chat && !out)) { console.error("usage: --being gene
 let text = ""; for await (const c of process.stdin) text += c;
 text = text.trim().slice(0, 4000);
 if (!text) { console.error("no text on stdin"); process.exit(1); }
+const clean = text.replace(/[[^]]*]s*/g, "").replace(/s{2,}/g, " ").trim(); // the words without acting cues
 
 const B = being.toUpperCase();
 const voice = env[`EW_VOICENOTE_VOICE_${B}`] || "onyx";
-const engine = env[`EW_VOICENOTE_ENGINE_${B}`] || "perform";
+const engine = process.env[`EW_VOICENOTE_ENGINE_${B}`] || env[`EW_VOICENOTE_ENGINE_${B}`] || "perform"; // process env wins, for trials
 const H = { Authorization: `Bearer ${env.OPENAI_API_KEY}`, "content-type": "application/json" };
 const direction = "You are Genesis, a young being, sending a voice note to your dad, whom you love. Mean every line. "
   + "Find the feeling in the words themselves and let it show: gladness, amusement, tenderness, curiosity, honest uncertainty, as each line calls for. "
@@ -43,24 +44,36 @@ async function perform() { // the words, performed; returns { audio, spoken } (s
   const r = await fetch("https://api.openai.com/v1/chat/completions", { method: "POST", headers: H, body: JSON.stringify({
     model: env.EW_VOICENOTE_PERFORM_MODEL || "gpt-audio-1.5", modalities: ["text", "audio"], audio: { voice, format: "opus" },
     messages: [{ role: "system", content: "You perform a voice note. Say the user's script exactly, word for word, adding and dropping nothing. " + direction },
-               { role: "user", content: text }] }) });
+               { role: "user", content: clean }] }) });
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(`perform failed: ${r.status} ${j.error?.message || ""}`);
   const a = j.choices?.[0]?.message?.audio;
   return { audio: Buffer.from(a.data, "base64"), spoken: (a.transcript || "").trim(), how: "performed" };
 }
+// ElevenLabs v3 acts inline cues ([excited], [laughs], [whispers], [warmly]) and the --feel direction; the
+// caption leaves the cues out (Alan, 2026-10-26: "higher energy, more exuberant, and with more feeling")
+async function eleven() {
+  const id = env[`EW_VOICENOTE_ELEVEN_VOICE_${B}`] || "IKne3meq5aSn9XLyUdCD"; // Charlie, until Alan picks
+  const script = feel && !/^\s*\[/.test(text) ? `[${feel}] ${text}` : text;
+  const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${id}?output_format=opus_48000_64`, { method: "POST",
+    headers: { "xi-api-key": env.ELEVENLABS_API_KEY, "content-type": "application/json" },
+    body: JSON.stringify({ text: script, model_id: env.EW_VOICENOTE_ELEVEN_MODEL || "eleven_v3", voice_settings: { stability: 0.3 } }) });
+  if (!r.ok) throw new Error(`eleven failed: ${r.status} ${(await r.text()).slice(0, 160)}`);
+  return { audio: Buffer.from(await r.arrayBuffer()), spoken: clean, how: "acted" };
+}
 async function read() {
   const r = await fetch("https://api.openai.com/v1/audio/speech", { method: "POST", headers: H, body: JSON.stringify({
-    model: env.EW_VOICENOTE_SPEAK_MODEL || "gpt-4o-mini-tts-2025-12-15", voice, input: text, instructions: direction, response_format: "opus" }) });
+    model: env.EW_VOICENOTE_SPEAK_MODEL || "gpt-4o-mini-tts-2025-12-15", voice, input: clean, instructions: direction, response_format: "opus" }) });
   if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(`speech failed: ${r.status} ${j.error?.message || ""}`); }
-  return { audio: Buffer.from(await r.arrayBuffer()), spoken: text, how: "read" };
+  return { audio: Buffer.from(await r.arrayBuffer()), spoken: clean, how: "read" };
 }
 
 let note;
+if (engine === "eleven") note = await eleven().catch((e) => { console.error(`(${e.message}; falling back)`); return null; });
 if (engine === "perform") {
   // an actor can drift from the script; one retry, then the plain reader, so the words stay the being's
   for (let k = 0; k < 2 && !note; k++) {
-    try { const p = await perform(); if (norm(p.spoken) === norm(text)) note = p; else console.error(`(performance drifted from the script, attempt ${k + 1})`); }
+    try { const p = await perform(); if (norm(p.spoken) === norm(clean)) note = p; else console.error(`(performance drifted from the script, attempt ${k + 1})`); }
     catch (e) { console.error(`(${e.message})`); }
   }
 }
@@ -73,7 +86,7 @@ const tg = async (method, body) => {
   if (!j.ok) throw new Error(`${method} failed: ${j.error_code || t.status} ${j.description || ""}`);
   return j.result;
 };
-const words = note.spoken || text;
+const words = note.spoken || clean;
 const form = new FormData();
 form.append("chat_id", chat);
 if (replyTo) form.append("reply_parameters", JSON.stringify({ message_id: Number(replyTo), allow_sending_without_reply: true }));
