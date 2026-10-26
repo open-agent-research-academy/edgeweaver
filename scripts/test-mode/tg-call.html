@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Call __TITLE__</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root { --bg: var(--tg-theme-bg-color, #ffffff); --fg: var(--tg-theme-text-color, #111111); --muted: var(--tg-theme-hint-color, #707579);
+    --btn: var(--tg-theme-button-color, #2481cc); --btn-fg: var(--tg-theme-button-text-color, #ffffff); --card: var(--tg-theme-secondary-bg-color, #f1f1f4); --bad: #d93a3a; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 16px 32px; background: var(--bg); color: var(--fg); font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  h1 { font-size: 22px; margin: 4px 0 2px; }
+  .sub { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  button { width: 100%; border: 0; border-radius: 12px; padding: 16px; font-size: 17px; font-weight: 600; background: var(--btn); color: var(--btn-fg); cursor: pointer; }
+  button.leave { background: var(--bad); color: #fff; }
+  button:disabled { opacity: .55; }
+  #status { margin: 14px 0 22px; color: var(--muted); font-size: 15px; min-height: 21px; }
+  .card { background: var(--card); border-radius: 12px; padding: 12px 14px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; font-weight: 600; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; justify-content: space-between; padding: 6px 0; }
+  li span:last-child { color: var(--muted); font-size: 14px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #34c759; margin-right: 8px; vertical-align: middle; }
+</style>
+</head>
+<body>
+  <h1>Call __TITLE__</h1>
+  <div class="sub">Talk live with __TITLE__. Anyone else on the call hears the same conversation.</div>
+  <button id="go">Join the call</button>
+  <div id="status"></div>
+  <div class="card"><h2>On the call</h2><ul id="people"><li><span>Nobody yet</span><span></span></li></ul></div>
+  <audio id="remote" autoplay playsinline></audio>
+<script type="module">
+import { TelnyxRTC } from "https://cdn.jsdelivr.net/npm/@telnyx/webrtc@__SDK__/+esm";
+const tg = window.Telegram?.WebApp; tg?.ready(); tg?.expand();
+const initData = tg?.initData || new URLSearchParams(location.hash.slice(1)).get("initData") || ""; // (the hash form is for headless tests; it must still be signed)
+const $ = (id) => document.getElementById(id);
+const say = (t) => { $("status").textContent = t; };
+const post = (path, body = {}) => fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ initData, ...body }) })
+  .then(async (r) => { const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.status); return j; });
+const fmt = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+let client = null, call = null;
+
+async function roster() {
+  try {
+    const r = await post("/api/tg/roster");
+    const ul = $("people"); ul.innerHTML = "";
+    if (!r.people.length) ul.innerHTML = "<li><span>Nobody yet</span><span></span></li>";
+    for (const p of r.people) { const li = document.createElement("li"); li.innerHTML = `<span><span class="dot"></span></span><span></span>`;
+      li.firstChild.append(`${p.name}${p.via === "telegram" ? "" : p.via === "phone" ? " (phone)" : ""}`); li.lastChild.textContent = `since ${fmt(p.since)}`; ul.append(li); }
+  } catch (e) { if (!initData) say("Open this from the button in Telegram."); else if (String(e.message).includes("not open")) say("This call isn't open to you yet."); }
+}
+roster(); setInterval(roster, 3000);
+
+function hangup() { try { call?.hangup(); } catch {} try { client?.disconnect(); } catch {} call = null; client = null; $("go").textContent = "Join the call"; $("go").className = ""; $("go").disabled = false; }
+
+$("go").onclick = async () => {
+  if (call) { hangup(); say("You left the call."); return; }
+  $("go").disabled = true; say("Joining...");
+  try {
+    await navigator.mediaDevices.getUserMedia({ audio: true }).then((s) => s.getTracks().forEach((t) => t.stop())); // ask for the microphone up front
+    const j = await post("/api/tg/join");
+    client = new TelnyxRTC({ login_token: j.token });
+    client.remoteElement = "remote";
+    client.on("telnyx.ready", () => { call = client.newCall({ destinationNumber: j.number, audio: true, video: false, remoteElement: "remote" }); });
+    client.on("telnyx.error", (e) => { if (!client || call) return; say("Couldn't connect. Try again."); hangup(); }); // after leaving, a late error is not news
+    client.on("telnyx.notification", (n) => {
+      if (!n.call) return;
+      const st = n.call.state;
+      if (st === "active") { say(`You're on the call, ${j.name}. Speak whenever you like.`); $("go").textContent = "Leave the call"; $("go").className = "leave"; $("go").disabled = false; }
+      else if (st === "ringing" || st === "trying" || st === "requesting") say("Connecting...");
+      else if (st === "hangup" || st === "destroy") { if (call) say("The call ended."); hangup(); }
+    });
+    client.connect();
+  } catch (e) { say(e.name === "NotAllowedError" ? "Telegram needs microphone access to join." : `Couldn't join: ${e.message}`); hangup(); }
+};
+window.addEventListener("pagehide", hangup);
+</script>
+</body>
+</html>

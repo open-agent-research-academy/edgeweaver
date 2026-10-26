@@ -36,12 +36,17 @@ export async function readEnv(root) {
 const readRows = async (file) => (await readFile(file, "utf8")).trim().split("\n").filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 
 // who answered the line during this call, from every party-line log (both bridges append to them)
+// (Telegram call-button callers have no number: the bridge logs "caller-named" for them)
 async function callersDuring(root, from, to) {
-  const dir = join(root, "logs", "voice"), out = [];
+  const dir = join(root, "logs", "voice"), out = [], named = {};
   for (const f of (await readdir(dir)).filter((n) => n.startsWith("partyline-"))) {
-    for (const r of await readRows(join(dir, f))) if (r.type === "caller-answered" && r.t >= from && r.t <= to && !out.includes(r.from)) out.push(r.from);
+    for (const r of await readRows(join(dir, f))) {
+      if (r.t < from || r.t > to) continue;
+      if (r.type === "caller-answered" && !out.includes(r.from)) out.push(r.from);
+      if (r.type === "caller-named") named[r.from] = r.name;
+    }
   }
-  return out;
+  return { nums: out, named };
 }
 
 const fmtTime = (t) => new Intl.DateTimeFormat("en-US", { timeZone: ET, weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(t)) + " ET";
@@ -63,8 +68,9 @@ export async function buildReport({ root, being, rows, env, group = false }) {
   const lastT = rows.at(-1).t;
   const ep = rows.find((r) => r.type === "episode-written"), epFail = rows.find((r) => r.type === "episode-failed");
   const names = Object.fromEntries((env[`EW_VOICE_CALLERS_${being.toUpperCase()}`] || "").split(",").map((s) => s.trim().split("=")).filter(([n]) => n).map(([n, name]) => [n, (name || "").trim()]));
-  const nums = await callersDuring(root, start.t - 30000, (end?.t || lastT) + 5000);
-  const callerLabel = (n) => group
+  const { nums, named } = await callersDuring(root, start.t - 30000, (end?.t || lastT) + 5000);
+  for (const [n, name] of Object.entries(named)) names[n] = name;
+  const callerLabel = (n) => named[n] ? `${named[n]} (Telegram call button, signed in)` : group
     ? (names[n] ? `${names[n]} (by caller ID)` : `an unknown number ending ${n.slice(-4)}`)
     : (names[n] ? `${names[n]} (caller ID ...${n.slice(-4)}, most likely ${names[n] === "Alan" ? "you" : names[n]})` : `unknown number ${n}`);
   const callerText = nums.length ? nums.map(callerLabel).join("; ") : "not known (no caller ID on this call)";

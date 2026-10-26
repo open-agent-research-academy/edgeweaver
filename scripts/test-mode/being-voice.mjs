@@ -116,6 +116,7 @@ export async function loadBeing(being, { root, env, memory = false }) {
     being, display, soulHead, callers, callerNames, mindPersona, voiceInstructions, delivery: fr.delivery,
     greeting: fr.greeting, // the voice says this at once
     // the greeting for a caller ID: the known one only when it names the person this being greets by name
-    greet: (from) => (fr.greetingKnown && from && callerNames[from] === fr.who ? fr.greetingKnown : fr.greeting),
+    // (name: who a Telegram sign-in says it is, for call-button callers who have no phone number)
+    greet: (from, name) => (fr.greetingKnown && ((from && callerNames[from] === fr.who) || name === fr.who) ? fr.greetingKnown : fr.greeting),
   };
 }

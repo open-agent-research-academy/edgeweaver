@@ -49,8 +49,8 @@ export class PartyLine {
    * @param {(count:number, info:object)=>void} [o.onRoster] called when the human count changes
    * @param {(reason:string)=>void} [o.onEnd] called when the line closes, so the bridge can end its session
    */
-  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, onEnd, beep = "on_enter", aiRedials = 2, confirmViaApi = false, allowedCallers = [] }) {
-    Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials, confirmViaApi, allowedCallers });
+  constructor({ apiKey, appId, number, openaiProjectId, log, onRoster, onEnd, beep = "on_enter", aiRedials = 2, confirmViaApi = false, allowedCallers = [], allowCaller = () => false }) {
+    Object.assign(this, { apiKey, appId, number, openaiProjectId, beep, aiRedials, confirmViaApi, allowedCallers, allowCaller });
     this.log = log || ((t, d) => console.log("[line]", t, d ? JSON.stringify(d) : ""));
     this.onRoster = onRoster || (() => {});
     this.onEnd = onEnd || (() => {});
@@ -104,7 +104,8 @@ export class PartyLine {
           if (p.to && p.to !== this.number) return; // one app carries every being's number; answer only our own
 
           // an armed being's line is pinned to its callers (Alan-only until the village opens); unknown numbers never reach it
-          if (this.allowedCallers.length && !this.allowedCallers.includes(p.from)) {
+          // (allowCaller: a Telegram call-button credential the bridge issued to a signed-in person)
+          if (this.allowedCallers.length && !this.allowedCallers.includes(p.from) && !this.allowCaller(p.from)) {
             this.log("caller-refused", { from: p.from });
             await this.api(`/calls/${p.call_control_id}/actions/reject`, { cause: "CALL_REJECTED" });
             return;

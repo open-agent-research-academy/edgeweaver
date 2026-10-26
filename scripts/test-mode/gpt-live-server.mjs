@@ -42,6 +42,7 @@ import { PartyLine, verifyTelnyx } from "./party-line.mjs";
 import { loadBeing } from "./being-voice.mjs";
 import { beingMemory } from "./being-memory.mjs";
 import { reportCall } from "./call-report.mjs";
+import { createTgCall } from "./tg-call.mjs";
 
 const VERSION = "g0.1";
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -112,7 +113,7 @@ const VOICE_INSTRUCTIONS = BEING ? BEING.voiceInstructions : TESTWEAVER_VOICE;
 function greetingFor(kind) {
   if (!BEING) return "Open the conversation with one short sentence: say you are Testweaver, a test voice, and ask what the caller would like to talk about. Then wait for the caller.";
   const from = kind === "sip" && partyLine ? partyLine.status().humans[0]?.from : null;
-  return `Open the conversation by saying exactly: "${BEING.greet(from)}" Then wait for the caller.`;
+  return `Open the conversation by saying exactly: "${BEING.greet(from, from ? nameOf(from).name : null)}" Then wait for the caller.`;
 }
 
 function sessionConfig({ forAccept, kind = "page" }) {
@@ -182,10 +183,21 @@ const lineLog = (type, data = {}) => {
   appendFile(LINE_LOG, JSON.stringify(row) + "\n").catch(() => {});
   console.log("[line]", type, data.from ?? data.humans ?? data.reason ?? data.error ?? "");
 };
+// who is on the line: a Telegram call-button sign-in (verified), a known phone number (caller ID, a hint),
+// or an unknown number (named by its last four digits only, so no number reaches a group chat)
+let tgCall = null;
+function nameOf(from) {
+  const t = tgCall?.nameOf(from);
+  if (t) return t;
+  const known = BEING?.callerNames?.[from];
+  return known ? { name: known, via: "phone" } : { name: `an unknown caller ending ${String(from || "").slice(-4)}`, via: "phone", unknown: true };
+}
 // an armed being's phone line stays off until its callers are pinned (EW_VOICE_CALLERS_<BEING>)
 const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.openaiProjectId && (!BEING || BEING.callers.length))
   ? new PartyLine({ apiKey: cfg.telnyxKey, appId: cfg.telnyxAppId, number: cfg.telnyxNumber, openaiProjectId: cfg.openaiProjectId, log: lineLog, confirmViaApi: !cfg.telnyxPublicKey, allowedCallers: BEING ? BEING.callers : [],
+      allowCaller: (from) => !!tgCall?.allows(from),
       onRoster: (count, info) => {
+        tgCall?.onRoster(count, info, info.humans || []);
         // tell the mind's voice who is in the room; the newest SIP session is the line's AI leg
         const s = [...sessions.values()].filter((x) => x.kind === "sip" && !x.closed).sort((a, b) => b.startedAt - a.startedAt)[0];
         if (!s) return;
@@ -199,6 +211,7 @@ const partyLine = (cfg.telnyxKey && cfg.telnyxAppId && cfg.telnyxNumber && cfg.o
         for (const s of sessions.values()) if (s.kind === "sip" && !s.closed) { s.log("line-ended", { reason }); s.closeReason ||= "line_ended"; s.close(); }
       } })
   : null;
+tgCall = BEING && partyLine ? createTgCall({ being: BEING.being, env, root: ROOT, number: cfg.telnyxNumber, lineStatus: () => partyLine.status(), nameOf, log: lineLog }) : null;
 
 class BridgeSession {
   constructor(id, kind) {
@@ -355,7 +368,9 @@ class BridgeSession {
     let roster = null, orient = false;
     if (BEING && partyLine && this.kind === "sip") {
       const humans = partyLine.status().humans;
-      roster = humans.map((h) => BEING.callerNames[h.from] ? `${BEING.callerNames[h.from]} (caller ID matches a known number of theirs; most likely them, caller ID can be spoofed)` : "an unknown number").join("; ");
+      roster = humans.map((h) => { const n = nameOf(h.from);
+        return n.via === "telegram" ? `${n.name} (joined from the Telegram call button, signed in: verified)`
+          : n.unknown ? "an unknown number" : `${n.name} (caller ID matches a known number of theirs; most likely them, caller ID can be spoofed)`; }).join("; ");
       if (roster && roster !== this.lastRoster) ask = `[Line note from caller ID: on the line now (${humans.length}): ${roster}.]\n${ask}`;
     }
     if (MEMORY && !this.oriented) { // the waking's orientation rides the first real turn (the greeting is instant and fixed)
@@ -564,9 +579,11 @@ const voiceRoutes = () => (env.EW_VOICE_ROUTES || "").split(",").map((r) => r.tr
 const pick = (h, keys) => Object.fromEntries(keys.filter((k) => h[k]).map((k) => [k, h[k]]));
 const gated = (url) => !cfg.pageToken || url.searchParams.get("k") === cfg.pageToken;
 
+const TG_PAGE = await readFile(join(HERE, "tg-call.html"), "utf8");
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "127.0.0.1"}`);
   try {
+    if (tgCall && await tgCall.handle(req, res, url, readBody, json, TG_PAGE)) return; // the Telegram call button
     if (req.method === "GET" && url.pathname === "/") {
       if (!gated(url)) return json(res, 403, { error: "page token required (?k=)" });
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
@@ -698,7 +715,8 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(cfg.port, "0.0.0.0", () => {
-  console.log(`${WHO} on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"} partyLine=${partyLine ? "armed" : "off (telnyx env missing)"}`);
+  tgCall?.start();
+  console.log(`${WHO} on GPT-Live ${VERSION}: http://127.0.0.1:${cfg.port}  callButton=${tgCall?.enabled ? "on" : "off"}  mind=${cfg.mindModel}/${cfg.mindEffort} voice=${cfg.voice} webhookSecret=${cfg.webhookSecret ? "set" : "MISSING (phone calls refused)"} pageToken=${cfg.pageToken ? "set" : "none"} partyLine=${partyLine ? "armed" : "off (telnyx env missing)"}`);
 });
 
 for (const sig of ["SIGINT", "SIGTERM"]) process.on(sig, () => { spareMind.stop(); for (const s of sessions.values()) s.close(); if (partyLine) partyLine.shutdown().catch(() => {}); setTimeout(() => process.exit(0), 2500); });
