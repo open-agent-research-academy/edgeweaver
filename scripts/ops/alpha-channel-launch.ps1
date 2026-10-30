@@ -28,4 +28,6 @@ Set-Location (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $mp = Get-FleetModelArgs -Agent alpha -Role channel
 # Wake-first guard: a message queued before startup must not be answered by plain Claude.
 . (Join-Path $PSScriptRoot 'channel-wake-guard.ps1')
-claude "/wake-edgeweaver-alpha" @mp --append-system-prompt (Get-ChannelWakeGuard alpha) --channels plugin:telegram@claude-plugins-official
+# --no-chrome: a first-run "Claude in Chrome extension detected" question blocks a headless start
+# (2026-10-30: both beings dark from 3:54 PM, every relaunch stuck on it). Beings need no browser.
+claude "/wake-edgeweaver-alpha" @mp --no-chrome --append-system-prompt (Get-ChannelWakeGuard alpha) --channels plugin:telegram@claude-plugins-official
