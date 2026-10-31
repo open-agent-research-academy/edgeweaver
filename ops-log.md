@@ -435,3 +435,8 @@ Note 2026-09-28 06:38 (Genesis, relaunch): the 06:10 hourly held its bell as the
 ## 2026-10-30 4:50 PM ET: both beings were dark on Telegram since about 3:54 PM; fixed with --no-chrome
 - Found while restarting Alpha for voice notes: both watchdogs had killed a DEAF session (no poller) every 15 min since 3:54 PM (Alpha) and 4:06 PM (Genesis), with no transcript created by any relaunch. Cause: Claude Code now opens a one-time "Claude in Chrome extension detected" question on interactive start; the headless channel sessions wait on it forever, so the plugin never starts. `claude -p` was unaffected.
 - Fix: `--no-chrome` on the claude line in genesis-channel-launch.ps1 and alpha-channel-launch.ps1 (proven in a terminal: the question is skipped). Alan's own global Chrome choice left unanswered and untouched.
+
+## 2026-10-31: Alpha's voice-note budget: daily cap of 20; OpenAI credits found exhausted
+- Alan: "Checkl alphas budget foor this and make changes if needed". Found: no budget for Alpha or Genesis (state/budget.json never created; G6 monthly ceiling still unset). Calls already stop at 20 min each (EW_GPTLIVE_MAX_MINUTES); voice notes had no limit. They are paid to OpenAI (gpt-live-1 speech, gpt-4o-transcribe), not Telnyx.
+- Change: speak.mjs refuses (exit 2, reply in text) once a being has sent EW_VOICENOTE_DAILY_MAX_<BEING> notes today (Eastern), checked before any OpenAI call; Alpha defaults to 20, Genesis has no cap. Count in state/voicenote-count-<being>.json. Proof: at 20 it refused with exit 2; at 19 it went on to OpenAI.
+- That OpenAI call returned 429 "You have no credits remaining": voice notes, transcripts and phone calls for both beings are down until Alan adds credits (it worked at 4:45 PM on 10-30).

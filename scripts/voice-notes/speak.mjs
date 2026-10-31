@@ -36,6 +36,14 @@ const chat = arg("--chat"), replyTo = arg("--reply-to"), thread = arg("--thread"
 // the backend of this out for alpha... once I get the go-ahead from the Circle, we can flip the switch")
 if (!NAMES[being] || (!chat && !out)) { console.error("usage: --being <genesis|alpha> --chat <chat_id> [--reply-to <id>] [--thread <topic id>] [--feel \"<direction>\"] (text on stdin); --out <file> writes the audio instead of sending"); process.exit(1); }
 if (!voiceNotesOn && !out) { console.error(`voice notes are off for ${being} (EW_VOICENOTE_${B}); reply in text`); process.exit(2); }
+// daily cap, checked before any OpenAI spend: EW_VOICENOTE_DAILY_MAX_<BEING>; Alpha 20 by default (a six-seat circle
+// with no G6 ceiling set; Alan, 2026-10-31: "check alphas budget for this and make changes if needed"), Genesis none
+const dailyMax = Number(process.env[`EW_VOICENOTE_DAILY_MAX_${B}`] || env[`EW_VOICENOTE_DAILY_MAX_${B}`] || (being === "alpha" ? 20 : 0));
+const countFile = join(repo, "state", `voicenote-count-${being}.json`);
+const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+const count = await readFile(countFile, "utf8").then(JSON.parse).catch(() => ({}));
+const sentToday = count.date === today ? Number(count.sent) || 0 : 0;
+if (dailyMax && !out && sentToday >= dailyMax) { console.error(`${being} has sent today's ${dailyMax} voice notes (EW_VOICENOTE_DAILY_MAX_${B}); reply in text`); process.exit(2); }
 const persona = await (await import("../test-mode/being-voice.mjs")).loadBeing(being, { root: repo, env });
 const verbatim = persona.delivery === "verbatim";
 
@@ -196,5 +204,6 @@ if (words.length > 1024) { // too long for a caption: the transcript goes as a r
     await tg("sendMessage", new URLSearchParams({ chat_id: chat, text: body.slice(i, i + 4096), disable_notification: "true", ...(thread ? { message_thread_id: thread } : {}),
       ...(i === 0 ? { reply_parameters: JSON.stringify({ message_id: sent.message_id }) } : {}) })).catch((e) => console.error(`(transcript not posted: ${e.message})`));
 }
-console.log(`sent voice note ${sent.message_id} (${Math.round(sent.voice?.duration || 0)} s, ${note.how}, ${voice})`);
+await writeFile(countFile, JSON.stringify({ date: today, sent: sentToday + 1 })).catch((e) => console.error(`(count not saved: ${e.message})`));
+console.log(`sent voice note ${sent.message_id} (${Math.round(sent.voice?.duration || 0)} s, ${note.how}, ${voice}; ${sentToday + 1}${dailyMax ? `/${dailyMax}` : ""} today)`);
 process.exit(0);
