@@ -14,7 +14,8 @@
 // Multi-being (D18/D20): --being <key> (or env EW_BEING; default genesis) resolves the
 // being's soul and env paths from avatars/<being>/manifest.json "paths". A being whose
 // paths are not armed yet (Alpha before its A2) is REFUSED, exit 1: orienting one being
-// against another being's memory is the failure mode, not a fallback.
+// against another being's memory is the failure mode, not a fallback. On a machine other
+// than the runtime host, env SOUL_REPO_PATH and EW_ENV_LOCAL override the manifest paths.
 //
 // Flags: --being <key>    which being (default: EW_BEING env, else genesis)
 //        --now <ISO>      test override for "now" (default: real now)
@@ -56,7 +57,7 @@ if (!HERMETIC) {
   catch { console.error(`unknown being "${BEING}" (no avatars/${BEING}/manifest.json)`); process.exit(1); }
   PATHS = manifest.paths || {};
   const soul = process.env.SOUL_REPO_PATH || PATHS.soulLocal;
-  const env = PATHS.envLocal;
+  const env = process.env.EW_ENV_LOCAL || PATHS.envLocal;
   if (!soul || !env) {
     console.log("ORIENTATION");
     console.log(`being: ${BEING} NOT ARMED - its soul/env paths are not set in avatars/${BEING}/manifest.json (arrives at its A2).`);
